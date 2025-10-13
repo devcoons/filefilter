@@ -24,78 +24,43 @@
 #                                                                                       #
 #########################################################################################
 
-__version__ = '0.1.11'
-
 #########################################################################################
 # IMPORTS                                                                               #
 #########################################################################################
 
-import json
-import warnings
+import os
 from .utilities import *
-from .ruleset import *
-from .collector import *
-
-__all__ = [
-    # Preferred API
-    "Ruleset", "load", "scan", "matches", "select", "match_dir", "match_file",
-    # Legacy API (still supported)
-    "filter_paths"
-]
-#########################################################################################
-
-def _warn(old: str, new: str):
-    warnings.warn(
-        f"'filefilter.{old}' is deprecated and will be removed in 0.2.0; "
-        f"use 'filescan.{new}'",
-        DeprecationWarning,
-        stacklevel=2,
-    )
 
 #########################################################################################
-
-def load(config_json: str, base: str = "cwd") -> Ruleset:
-    """
-    Parse the config JSON and return a RuleSet resolved against `base`.
-    Equivalent to: RuleSet(json.loads(config_json), resolve_base=base)
-    """
-    data = json.loads(config_json)
-    return Ruleset(data, resolve_base=base)
-
 #########################################################################################
 
-def scan(rules: Ruleset) -> list[str]:
-    """
-    Walk rules.root_dir and return files accepted by the rules.
-    Equivalent to: collect_files(rules)
-    """
-    return collect_files(rules)
+class Ruleset:
+    """Resolved root + parsed filters ready for matching."""
+    def __init__(self, data: dict, resolve_base: str = ''):
+        raw_root_original = str(data["root_dir"]).strip()
+        if os.path.isabs(raw_root_original):
+            root = raw_root_original
+        else:
+            if resolve_base in ("", "cwd"):
+                base_dir = os.getcwd()
+            elif resolve_base == "script":
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+            else:
+                base_dir = resolve_base
+            root = os.path.join(base_dir, raw_root_original)
+        self.root_dir = os.path.normpath(root)
 
-#########################################################################################
+        inc = data['filters']['include']
+        exc = data['filters']['exclude']
 
-def matches(path: str, rules: Ruleset) -> bool:
-    """
-    Return True if `path` would be included by `rules`.
-    Equivalent to: should_include(path, rules)
-    """
-    return should_include(path, rules)
+        self.inc_dirs_root, self.inc_dirs_one, self.inc_dirs_any = parse_dir_patterns(inc.get('dirs', []))
+        self.exc_dirs_root, self.exc_dirs_one, self.exc_dirs_any = parse_dir_patterns(exc.get('dirs', []))
 
-#########################################################################################
+        self.include_files = parse_file_patterns(inc.get('files', []))
+        self.exclude_files = parse_file_patterns(exc.get('files', []))
 
-def select(config_json: str, base: str = "cwd") -> list[str]:
-    """
-    Convenience: load(...) + scan(...).
-    """
-    return scan(load(config_json, base=base))
-
-#########################################################################################
-
-def filter_paths(config_json: str, resolve_base: str = 'cwd'):
-    """Load config JSON, build Config, and return collected files."""
-    _warn("filter_paths", "select")
-    data = json.loads(config_json)
-    cfg = Ruleset(data, resolve_base=resolve_base)
-    return collect_files(cfg)
+        self.inc_exts = parse_extensions(inc.get('extensions', []))
+        self.exc_exts = parse_extensions(exc.get('extensions', []))
 
 #########################################################################################
 #########################################################################################

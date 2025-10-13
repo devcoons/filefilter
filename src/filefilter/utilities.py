@@ -24,78 +24,112 @@
 #                                                                                       #
 #########################################################################################
 
-__version__ = '0.1.11'
-
 #########################################################################################
 # IMPORTS                                                                               #
 #########################################################################################
 
-import json
-import warnings
-from .utilities import *
-from .ruleset import *
-from .collector import *
+import re
+from fnmatch import fnmatch
 
-__all__ = [
-    # Preferred API
-    "Ruleset", "load", "scan", "matches", "select", "match_dir", "match_file",
-    # Legacy API (still supported)
-    "filter_paths"
-]
+#########################################################################################
 #########################################################################################
 
-def _warn(old: str, new: str):
-    warnings.warn(
-        f"'filefilter.{old}' is deprecated and will be removed in 0.2.0; "
-        f"use 'filescan.{new}'",
-        DeprecationWarning,
-        stacklevel=2,
-    )
+def normalize_path(p: str) -> str:
+    """Normalize and lowercase a path."""
+    return re.sub(r"[\\/]+", "/", p.strip()).lower()
 
 #########################################################################################
 
-def load(config_json: str, base: str = "cwd") -> Ruleset:
-    """
-    Parse the config JSON and return a RuleSet resolved against `base`.
-    Equivalent to: RuleSet(json.loads(config_json), resolve_base=base)
-    """
-    data = json.loads(config_json)
-    return Ruleset(data, resolve_base=base)
+def parse_file_patterns(patterns):
+    """Normalize and lowercase file patterns."""
+    return [normalize_path(p) for p in (patterns or [])]
 
 #########################################################################################
 
-def scan(rules: Ruleset) -> list[str]:
-    """
-    Walk rules.root_dir and return files accepted by the rules.
-    Equivalent to: collect_files(rules)
-    """
-    return collect_files(rules)
+def split_path(path: str):
+    """Split normalized path into segments."""
+    path = normalize_path(path)
+    parts = path.split('/')
+    return [p for p in parts if p]
 
 #########################################################################################
 
-def matches(path: str, rules: Ruleset) -> bool:
-    """
-    Return True if `path` would be included by `rules`.
-    Equivalent to: should_include(path, rules)
-    """
-    return should_include(path, rules)
+def parse_dir_patterns(patterns):
+    """Bucket dir patterns by leading marker: root (none), one+ (*/...), or any (**/...)."""
+    root_patts, one_patts, any_patts = [], [], []
+    for raw in patterns or []:
+        p = normalize_path(raw).rstrip('/')
+        if not p:
+            continue
+        if p.startswith('**/'):
+            any_patts.append(p)
+        elif p.startswith('*/'):
+            one_patts.append(p)
+        else:
+            root_patts.append(p)
+    return root_patts, one_patts, any_patts
 
 #########################################################################################
 
-def select(config_json: str, base: str = "cwd") -> list[str]:
-    """
-    Convenience: load(...) + scan(...).
-    """
-    return scan(load(config_json, base=base))
+def parse_extensions(patterns):
+    """Normalize and lowercase extensions, ensure leading '.'."""
+    out = []
+    for e in patterns or []:
+        norm = normalize_path(e).lstrip('.')
+        if norm:
+            out.append('.' + norm)
+    return out
 
 #########################################################################################
 
-def filter_paths(config_json: str, resolve_base: str = 'cwd'):
-    """Load config JSON, build Config, and return collected files."""
-    _warn("filter_paths", "select")
-    data = json.loads(config_json)
-    cfg = Ruleset(data, resolve_base=resolve_base)
-    return collect_files(cfg)
+def count_leading_stars(patt: str) -> tuple[int, str]:
+    """Count leading */ or **/ markers and return remaining pattern."""
+    p = normalize_path(patt)
+    parts = p.split('/')
+    n = 0
+    for seg in parts:
+        if seg == '*':
+            n += 1
+        elif seg == '**':
+            return -1, '/'.join(parts[1:])
+        else:
+            break
+    return n, '/'.join(parts[n:])
+
+#########################################################################################
+
+def match_doublestar_segments(path_parts: list[str], start: int, patt_parts: list[str]) -> list[int]:
+    """Return a list of end indices j such that path_parts[start:j] matches patt_parts where '**' means zero+ segments."""
+    results = []
+    def rec(i: int, j: int):
+        if i == len(patt_parts):
+            results.append(j)
+            return
+        token = patt_parts[i]
+        if token == '**':
+            for k in range(j, len(path_parts) + 1):
+                rec(i + 1, k)
+        elif token == '*':
+            if j < len(path_parts):
+                rec(i + 1, j + 1)
+        else:
+            if j < len(path_parts) and path_parts[j] == token:
+                rec(i + 1, j + 1)
+    rec(0, start)
+    return results
+
+#########################################################################################
+
+def ext_matches(ext: str, patterns: list[str]) -> bool:
+    """True if ext matches any pattern; '.*' means any non-empty extension only."""
+    for p in patterns or []:
+        if p == '.*':
+            if ext:
+                return True
+            continue
+        if fnmatch(ext, p):
+            return True
+    return False
 
 #########################################################################################
 #########################################################################################

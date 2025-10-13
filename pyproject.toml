@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "filefilter"
-dynamic = ["version"]
+version = "0.1.11"
 description = "Filter files in a directory tree based on configurable glob rules."
 readme = "README.md"
 authors = [{ name = "Ioannis D (devcoons)", email = "support@devcoons.com" }]
@@ -48,6 +48,10 @@ Issues   = "https://github.com/devcoons/filefilter/issues"
 
 [tool.setuptools.dynamic]
 version = { attr = "filefilter.__version__" }
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
 
 [tool.setuptools.packages.find]
 where   = ["src"]
