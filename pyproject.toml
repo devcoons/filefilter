@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "filefilter"
-version = "0.1.12"
+version = "0.1.13"
 description = "Filter files in a directory tree based on configurable glob rules."
 readme = "README.md"
 authors = [{ name = "Ioannis D (devcoons)", email = "support@devcoons.com" }]
