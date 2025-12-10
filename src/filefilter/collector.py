@@ -111,6 +111,9 @@ def match_file(filepath: str, include_files: list[str]) -> bool:
         if not re.match(r'^' + rx + r'$', filename):
             continue
 
+        if not pat_dirs:
+            return True
+            
         if lead_stars == -1:               
             start_positions = range(0, depth + 1)
             if not pat_dirs:
