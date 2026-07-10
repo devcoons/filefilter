@@ -120,16 +120,50 @@ def match_doublestar_segments(path_parts: list[str], start: int, patt_parts: lis
 
 #########################################################################################
 
-def ext_matches(ext: str, patterns: list[str]) -> bool:
+def ext_matches(ext: str, patterns: list[str], filename: str = '') -> bool:
     """True if ext matches any pattern; '.*' means any non-empty extension only."""
+    name = normalize_path(filename) if filename else ''
     for p in patterns or []:
         if p == '.*':
             if ext:
                 return True
             continue
+        if name and name.endswith(p):
+            return True
         if fnmatch(ext, p):
             return True
     return False
+
+#########################################################################################
+
+def pattern_specificity(pattern: str) -> int:
+    """Score a pattern; higher means more specific (more literals, fewer wildcards)."""
+    p = normalize_path(pattern).rstrip('/')
+    if p.endswith('/**'):
+        p = p[:-3]
+    score = 0
+    for seg in p.split('/'):
+        if not seg:
+            continue
+        if seg == '**':
+            score += 1
+        elif seg == '*':
+            score += 5
+        elif '*' in seg:
+            score += 5
+        else:
+            score += 100
+    return score
+
+#########################################################################################
+
+def best_matching_specificity(patterns: list[str], matcher, target: str) -> int:
+    """Return the highest specificity among patterns that match target, or -1 if none."""
+    best = -1
+    for patt in patterns or []:
+        if matcher(target, [patt]):
+            best = max(best, pattern_specificity(patt))
+    return best
 
 #########################################################################################
 #########################################################################################

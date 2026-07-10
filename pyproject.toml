@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "filefilter"
-version = "0.1.13"
+version = "0.2.0"
 description = "Filter files in a directory tree based on configurable glob rules."
 readme = "README.md"
 authors = [{ name = "Ioannis D (devcoons)", email = "support@devcoons.com" }]
@@ -38,6 +38,7 @@ requires-python = ">=3.7"
 dev = [
   "pip-tools",
   "pytest",
+  "pytest-cov",
   "flake8",
   "mypy"
 ]
@@ -50,7 +51,7 @@ Issues   = "https://github.com/devcoons/filefilter/issues"
 version = { attr = "filefilter.__version__" }
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q --cov=filefilter --cov-fail-under=100 --cov-report=term-missing"
 pythonpath = ["src"]
 
 [tool.setuptools.packages.find]

@@ -101,26 +101,33 @@ def match_file(filepath: str, include_files: list[str]) -> bool:
         lead_stars, tail = count_leading_stars(patt)
         tail_parts = split_path(tail)
         if not tail_parts:
-            continue 
+            if lead_stars == -1:
+                return True
+            continue
 
         pat_filename = tail_parts[-1]
         pat_dirs = tail_parts[:-1]
         rx = re.escape(pat_filename)
-        rx = rx.replace(r'\*\*', '.*') 
-        rx = rx.replace(r'\*',  '.+')  
+        rx = rx.replace(r'\.\*\*', r'(\..*)?')
+        rx = rx.replace(r'\*\*', '.*')
+        rx = rx.replace(r'\*',  '.+')
         if not re.match(r'^' + rx + r'$', filename):
             continue
 
         if not pat_dirs:
-            return True
-            
-        if lead_stars == -1:               
+            if lead_stars == -1:
+                return True
+            if lead_stars == 0 and depth == 0:
+                return True
+            if lead_stars > 0 and depth == lead_stars:
+                return True
+            continue
+
+        if lead_stars == -1:
             start_positions = range(0, depth + 1)
-            if not pat_dirs:
-                return True 
             for s in start_positions:
                 ends = match_doublestar_segments(dir_parts, s, pat_dirs)
-                if ends:                   
+                if ends:
                     return True
         elif lead_stars == 0:               
             s = 0
@@ -153,23 +160,44 @@ def should_include(full_path: str, cfg: Ruleset) -> bool:
                 out.extend(lst)
         return out
 
-    if cfg.exc_exts and ext_matches(ext, cfg.exc_exts):
+    if cfg.exc_exts and ext_matches(ext, cfg.exc_exts, name):
         return False
-    if cfg.exclude_files and match_file(rel, cfg.exclude_files):
-        return False
+
+    inc_dirs = _merge(cfg.inc_dirs_root, cfg.inc_dirs_one, cfg.inc_dirs_any)
+    inc_path_spec = best_matching_specificity(inc_dirs, match_dir, dir_rel)
+    if cfg.include_files:
+        inc_path_spec = max(
+            inc_path_spec,
+            best_matching_specificity(cfg.include_files, match_file, rel),
+        )
+
     exc_dirs = _merge(cfg.exc_dirs_root, cfg.exc_dirs_one, cfg.exc_dirs_any)
+    exc_path_spec = -1
+    exclude_path_hit = False
+    if cfg.exclude_files and match_file(rel, cfg.exclude_files):
+        exclude_path_hit = True
+        exc_path_spec = max(
+            exc_path_spec,
+            best_matching_specificity(cfg.exclude_files, match_file, rel),
+        )
     if exc_dirs and match_dir(dir_rel, exc_dirs):
+        exclude_path_hit = True
+        exc_path_spec = max(
+            exc_path_spec,
+            best_matching_specificity(exc_dirs, match_dir, dir_rel),
+        )
+    if exclude_path_hit and inc_path_spec <= exc_path_spec:
         return False
+
     files_present = bool(cfg.include_files)
     files_match = files_present and match_file(rel, cfg.include_files)
     if files_match:
         return True
-    inc_dirs = _merge(cfg.inc_dirs_root, cfg.inc_dirs_one, cfg.inc_dirs_any)
     dirs_present = bool(inc_dirs)
     dirs_match = dirs_present and match_dir(dir_rel, inc_dirs)
     if (files_present or dirs_present) and not (files_match or dirs_match):
-        return False 
-    if cfg.inc_exts and not ext_matches(ext, cfg.inc_exts):
+        return False
+    if cfg.inc_exts and not ext_matches(ext, cfg.inc_exts, name):
         return False
     return True
 

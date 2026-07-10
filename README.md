@@ -124,26 +124,38 @@ It focuses on predictable pattern logic rather than the underlying filesystem wa
 
 When scanning files, the library applies filters in this exact sequence:
 
-1️⃣ **Include-file override**  
+1️⃣ **Extension excludes (hard)**  
+   - If the file extension matches `exclude.extensions` → **excluded immediately**.  
+   - This step is not overridden by include patterns.
+
+2️⃣ **Path excludes vs. includes (specificity wins)**  
+   - If the file path matches `exclude.files`, or its parent directory matches `exclude.dirs`, the file is a candidate for exclusion.  
+   - At the same time, the library checks all matching patterns in `include.dirs` and `include.files`.  
+   - Each pattern receives a **specificity score** (more literal segments = higher score; more wildcards = lower score).  
+   - If the **best matching include pattern is more specific** than the best matching exclude pattern → the exclude is **ignored** for this file.  
+   - Otherwise → **excluded**.
+
+   | Pattern | Relative specificity |
+   |---------|---------------------|
+   | `**` | very low (broad) |
+   | `**/KLM/**` | higher |
+   | `**/KLM/ABC/**` | highest |
+
+   > Put both the broad include and the exception in the same `include.dirs` list — no separate override section is needed.
+
+3️⃣ **Include-file fast path**  
    - If the file matches any `include.files` pattern → **included immediately**,  
      even if its extension isn’t in `include.extensions`.
 
-2️⃣ **Hard excludes**  
-   - If the file extension matches `exclude.extensions` → excluded.  
-   - If the full path matches `exclude.files` → excluded.  
-   - If its parent directory matches `exclude.dirs` → excluded.
-
-
-
-3️⃣ **Inclusion gating**  
+4️⃣ **Inclusion gating**  
    - If there are *any* include patterns (dirs or files), the file must match  
-     one of them to be included.  
+     at least one of them.  
      Otherwise, it’s excluded.
 
-4️⃣ **Extension whitelist**  
+5️⃣ **Extension whitelist**  
    - If `include.extensions` is not empty, only matching extensions are included.
 
-5️⃣ **Everything else**  
+6️⃣ **Everything else**  
    - Included by default.
 
 ---
@@ -171,8 +183,8 @@ When scanning files, the library applies filters in this exact sequence:
 | Field | Description |
 |-------|--------------|
 | `root_dir` | Base directory (absolute or relative). |
-| `filters.include.dirs` | Directory inclusion patterns. |
-| `filters.include.files` | File inclusion patterns (glob-like). |
+| `filters.include.dirs` | Directory inclusion patterns. Broader and narrower patterns can coexist; a more specific include dir beats a broader exclude dir (see decision order). |
+| `filters.include.files` | File inclusion patterns (glob-like). Also participates in specificity comparisons against excludes. |
 | `filters.include.extensions` | Extension whitelist. |
 | `filters.exclude.*` | Same structure, but acts as exclusion filters. |
 
@@ -384,13 +396,50 @@ When scanning files, the library applies filters in this exact sequence:
 
 ---
 
+###  Example 7 — Exclude a subtree, except an explicit include path
+
+Exclude everything under `KLM`, but still collect files under `KLM/ABC`.  
+List the exception alongside the broad include in normal `include.dirs`:
+
+```json
+{
+  "root_dir": ".",
+  "filters": {
+    "include": {
+      "dirs": ["**", "**/KLM/ABC/**"],
+      "files": [],
+      "extensions": ["c"]
+    },
+    "exclude": {
+      "dirs": ["**/KLM/**"],
+      "files": [],
+      "extensions": []
+    }
+  }
+}
+```
+
+| File Path | Result | Reason |
+|------------|---------|--------|
+| `src/foo.c` | ✅ | broad `**` include + `.c` extension |
+| `src/KLM/skip.c` | ❌ | `**/KLM/**` exclude beats broad `**` |
+| `src/KLM/ABC/keep.c` | ✅ | `**/KLM/ABC/**` include beats `**/KLM/**` exclude |
+| `src/x/KLM/ABC/deep/keep.c` | ✅ | exception works at any depth |
+| `src/KLM/ABC/keep.txt` | ❌ | wrong extension (still inside the allowed dir) |
+
+The same technique applies to other “exclude a path part, except one branch” cases — for example, exclude `**/ABC/**` but keep `**/ABC/KLM/**` by adding both `src/**` (or `**`) and `**/ABC/KLM/**` to `include.dirs`.
+
+---
+
 ## Summary of Behavior
 
-- Exclusions **always win** first.
-- A matching `include.files` **forces inclusion**.
-- If any include filters exist, at least one must match.
-- Extensions act as a **final whitelist**.
-- Matching is **case-insensitive** and normalized.
+- `exclude.extensions` are always applied first (hard exclude).  
+- For path rules, **the most specific matching pattern wins** — a narrow `include.dirs` entry can beat a broader `exclude.dirs` entry in the same config.  
+- Broad includes such as `**` do **not** cancel excludes; only a **more specific** include does.  
+- A matching `include.files` pattern forces inclusion (skips extension whitelist), once path excludes are resolved.  
+- If any include filters exist, at least one must match (inclusion gating).  
+- Extensions act as a **final whitelist** when not bypassed by `include.files`.  
+- Matching is **case-insensitive** and normalized.  
 - `**` can span directory boundaries, not just characters.
 
 ---

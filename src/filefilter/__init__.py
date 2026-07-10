@@ -24,7 +24,7 @@
 #                                                                                       #
 #########################################################################################
 
-__version__ = '0.1.13'
+__version__ = '0.2.0'
 
 #########################################################################################
 # IMPORTS                                                                               #
@@ -47,7 +47,7 @@ __all__ = [
 def _warn(old: str, new: str):
     warnings.warn(
         f"'filefilter.{old}' is deprecated and will be removed in 0.2.0; "
-        f"use 'filescan.{new}'",
+        f"use 'filefilter.{new}'",
         DeprecationWarning,
         stacklevel=2,
     )
