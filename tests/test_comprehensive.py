@@ -262,7 +262,8 @@ def test_regression_file_matching(path: str, patterns: list[str], expected: bool
 
 SPECIFICITY_SCENARIOS = [
     pytest.param(
-        ["**", "**/KLM/ABC/**"],
+        ["**"],
+        ["**/KLM/ABC/**"],
         ["**/KLM/**"],
         {
             "src/foo.py": True,
@@ -273,7 +274,8 @@ SPECIFICITY_SCENARIOS = [
         id="klm-abc-exception",
     ),
     pytest.param(
-        ["src/**", "**/ABC/KLM/**"],
+        ["src/**"],
+        ["**/ABC/KLM/**"],
         ["**/ABC/**"],
         {
             "src/foo.py": True,
@@ -286,6 +288,7 @@ SPECIFICITY_SCENARIOS = [
     ),
     pytest.param(
         ["**"],
+        [],
         ["**/__pycache__/**"],
         {
             "src/app.py": True,
@@ -294,7 +297,8 @@ SPECIFICITY_SCENARIOS = [
         id="pycache-broad-exclude-wins",
     ),
     pytest.param(
-        ["**", "**/keep/**"],
+        ["**"],
+        [],
         ["**/skip/**"],
         {
             "skip/only.py": False,
@@ -306,10 +310,11 @@ SPECIFICITY_SCENARIOS = [
 ]
 
 
-@pytest.mark.parametrize("inc_dirs,exc_dirs,files", SPECIFICITY_SCENARIOS)
+@pytest.mark.parametrize("inc_dirs,inc_odirs,exc_dirs,files", SPECIFICITY_SCENARIOS)
 def test_specificity_integration(
     tmp_path: Path,
     inc_dirs: list[str],
+    inc_odirs: list[str],
     exc_dirs: list[str],
     files: dict[str, bool],
 ):
@@ -317,6 +322,7 @@ def test_specificity_integration(
         touch(tmp_path / rel)
     cfg = make_config(
         include_dirs=inc_dirs,
+        include_odirs=inc_odirs,
         include_extensions=["py"],
         exclude_dirs=exc_dirs,
     )

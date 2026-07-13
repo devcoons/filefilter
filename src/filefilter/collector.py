@@ -164,12 +164,10 @@ def should_include(full_path: str, cfg: Ruleset) -> bool:
         return False
 
     inc_dirs = _merge(cfg.inc_dirs_root, cfg.inc_dirs_one, cfg.inc_dirs_any)
-    inc_path_spec = best_matching_specificity(inc_dirs, match_dir, dir_rel)
-    if cfg.include_files:
-        inc_path_spec = max(
-            inc_path_spec,
-            best_matching_specificity(cfg.include_files, match_file, rel),
-        )
+    odirs = _merge(cfg.inc_odirs_root, cfg.inc_odirs_one, cfg.inc_odirs_any)
+    gate_dirs = _merge(inc_dirs, odirs)
+
+    odir_spec = best_matching_specificity(odirs, match_dir, dir_rel)
 
     exc_dirs = _merge(cfg.exc_dirs_root, cfg.exc_dirs_one, cfg.exc_dirs_any)
     exc_path_spec = -1
@@ -186,15 +184,15 @@ def should_include(full_path: str, cfg: Ruleset) -> bool:
             exc_path_spec,
             best_matching_specificity(exc_dirs, match_dir, dir_rel),
         )
-    if exclude_path_hit and inc_path_spec <= exc_path_spec:
+    if exclude_path_hit and odir_spec <= exc_path_spec:
         return False
 
     files_present = bool(cfg.include_files)
     files_match = files_present and match_file(rel, cfg.include_files)
     if files_match:
         return True
-    dirs_present = bool(inc_dirs)
-    dirs_match = dirs_present and match_dir(dir_rel, inc_dirs)
+    dirs_present = bool(gate_dirs)
+    dirs_match = dirs_present and match_dir(dir_rel, gate_dirs)
     if (files_present or dirs_present) and not (files_match or dirs_match):
         return False
     if cfg.inc_exts and not ext_matches(ext, cfg.inc_exts, name):

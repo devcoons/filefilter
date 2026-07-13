@@ -128,11 +128,10 @@ When scanning files, the library applies filters in this exact sequence:
    - If the file extension matches `exclude.extensions` → **excluded immediately**.  
    - This step is not overridden by include patterns.
 
-2️⃣ **Path excludes vs. includes (specificity wins)**  
+2️⃣ **Path excludes vs. override dirs (`include.odirs`)**  
    - If the file path matches `exclude.files`, or its parent directory matches `exclude.dirs`, the file is a candidate for exclusion.  
-   - At the same time, the library checks all matching patterns in `include.dirs` and `include.files`.  
-   - Each pattern receives a **specificity score** (more literal segments = higher score; more wildcards = lower score).  
-   - If the **best matching include pattern is more specific** than the best matching exclude pattern → the exclude is **ignored** for this file.  
+   - **`include.dirs` and `include.files` do not override excludes** — they only gate inclusion later.  
+   - If a matching pattern in `include.odirs` is **more specific** than the best matching exclude pattern → the exclude is **ignored** for this file.  
    - Otherwise → **excluded**.
 
    | Pattern | Relative specificity |
@@ -141,7 +140,8 @@ When scanning files, the library applies filters in this exact sequence:
    | `**/KLM/**` | higher |
    | `**/KLM/ABC/**` | highest |
 
-   > Put both the broad include and the exception in the same `include.dirs` list — no separate override section is needed.
+   > Use `include.dirs` for normal scoping (e.g. `**`, `src/**`).  
+   > Use `include.odirs` only for explicit exceptions to `exclude.dirs` / `exclude.files`.
 
 3️⃣ **Include-file fast path**  
    - If the file matches any `include.files` pattern → **included immediately**,  
@@ -168,6 +168,7 @@ When scanning files, the library applies filters in this exact sequence:
   "filters": {
     "include": {
       "dirs": [],
+      "odirs": [],
       "files": [],
       "extensions": []
     },
@@ -183,8 +184,9 @@ When scanning files, the library applies filters in this exact sequence:
 | Field | Description |
 |-------|--------------|
 | `root_dir` | Base directory (absolute or relative). |
-| `filters.include.dirs` | Directory inclusion patterns. Broader and narrower patterns can coexist; a more specific include dir beats a broader exclude dir (see decision order). |
-| `filters.include.files` | File inclusion patterns (glob-like). Also participates in specificity comparisons against excludes. |
+| `filters.include.dirs` | Directory inclusion patterns for gating (must match when any include filters are set). Never overrides excludes. |
+| `filters.include.odirs` | Optional. Override directory patterns (defaults to `[]` when omitted). When more specific than a matching exclude, the exclude is ignored for that path. Also satisfies dir gating. |
+| `filters.include.files` | File inclusion patterns (glob-like). Forces inclusion (skips extension whitelist) once path excludes are resolved. Does not override excludes. |
 | `filters.include.extensions` | Extension whitelist. |
 | `filters.exclude.*` | Same structure, but acts as exclusion filters. |
 
@@ -402,14 +404,15 @@ When scanning files, the library applies filters in this exact sequence:
 ###  Example 7 — Exclude a subtree, except an explicit include path
 
 Exclude everything under `KLM`, but still collect files under `KLM/ABC`.  
-List the exception alongside the broad include in normal `include.dirs`:
+Use `include.dirs` for the broad scope and `include.odirs` for the exception:
 
 ```json
 {
   "root_dir": ".",
   "filters": {
     "include": {
-      "dirs": ["**", "**/KLM/ABC/**"],
+      "dirs": ["**"],
+      "odirs": ["**/KLM/ABC/**"],
       "files": [],
       "extensions": ["c"]
     },
@@ -425,20 +428,20 @@ List the exception alongside the broad include in normal `include.dirs`:
 | File Path | Result | Reason |
 |------------|---------|--------|
 | `src/foo.c` | ✅ | broad `**` include + `.c` extension |
-| `src/KLM/skip.c` | ❌ | `**/KLM/**` exclude beats broad `**` |
-| `src/KLM/ABC/keep.c` | ✅ | `**/KLM/ABC/**` include beats `**/KLM/**` exclude |
-| `src/x/KLM/ABC/deep/keep.c` | ✅ | exception works at any depth |
+| `src/KLM/skip.c` | ❌ | `**/KLM/**` exclude; no matching `odirs` |
+| `src/KLM/ABC/keep.c` | ✅ | `**/KLM/ABC/**` odir beats `**/KLM/**` exclude |
+| `src/x/KLM/ABC/deep/keep.c` | ✅ | odir exception works at any depth |
 | `src/KLM/ABC/keep.txt` | ❌ | wrong extension (still inside the allowed dir) |
 
-The same technique applies to other “exclude a path part, except one branch” cases — for example, exclude `**/ABC/**` but keep `**/ABC/KLM/**` by adding both `src/**` (or `**`) and `**/ABC/KLM/**` to `include.dirs`.
+The same technique applies to other “exclude a path part, except one branch” cases — for example, exclude `**/ABC/**` but keep `**/ABC/KLM/**` via `include.odirs: ["**/ABC/KLM/**"]` alongside `include.dirs: ["src/**"]`.
 
 ---
 
 ## Summary of Behavior
 
 - `exclude.extensions` are always applied first (hard exclude).  
-- For path rules, **the most specific matching pattern wins** — a narrow `include.dirs` entry can beat a broader `exclude.dirs` entry in the same config.  
-- Broad includes such as `**` do **not** cancel excludes; only a **more specific** include does.  
+- `include.dirs` and `include.files` **never** override path excludes — they only gate inclusion.  
+- Only `include.odirs` can override a matching exclude, and only when the odir pattern is **more specific**.  
 - A matching `include.files` pattern forces inclusion (skips extension whitelist), once path excludes are resolved.  
 - If any include filters exist, at least one must match (inclusion gating).  
 - Extensions act as a **final whitelist** when not bypassed by `include.files`.  

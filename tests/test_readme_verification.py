@@ -123,7 +123,12 @@ README_EXAMPLES = [
         {
             "root_dir": ".",
             "filters": {
-                "include": {"dirs": ["**", "**/KLM/ABC/**"], "files": [], "extensions": ["c"]},
+                "include": {
+                    "dirs": ["**"],
+                    "odirs": ["**/KLM/ABC/**"],
+                    "files": [],
+                    "extensions": ["c"],
+                },
                 "exclude": {"dirs": ["**/KLM/**"], "files": [], "extensions": []},
             },
         },
@@ -191,7 +196,12 @@ def test_readme_abc_klm_branch_exception(tmp_path: Path):
     cfg = {
         "root_dir": ".",
         "filters": {
-            "include": {"dirs": ["src/**", "**/ABC/KLM/**"], "files": [], "extensions": ["c"]},
+            "include": {
+                "dirs": ["src/**"],
+                "odirs": ["**/ABC/KLM/**"],
+                "files": [],
+                "extensions": ["c"],
+            },
             "exclude": {"dirs": ["**/ABC/**"], "files": [], "extensions": []},
         },
     }

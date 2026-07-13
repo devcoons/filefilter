@@ -54,6 +54,7 @@ class Ruleset:
         exc = data['filters']['exclude']
 
         self.inc_dirs_root, self.inc_dirs_one, self.inc_dirs_any = parse_dir_patterns(inc.get('dirs', []))
+        self.inc_odirs_root, self.inc_odirs_one, self.inc_odirs_any = parse_dir_patterns(inc.get('odirs', []))
         self.exc_dirs_root, self.exc_dirs_one, self.exc_dirs_any = parse_dir_patterns(exc.get('dirs', []))
 
         self.include_files = parse_file_patterns(inc.get('files', []))

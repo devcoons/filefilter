@@ -179,8 +179,8 @@ def test_dotfile_file_pattern_not_extension_filter(tree: Path):
     assert str(tree / "main.py") not in paths
 
 
-def test_specific_include_dir_beats_broader_exclude(tmp_path: Path):
-    """More specific include.dirs in the same list override broader exclude.dirs."""
+def test_specific_odir_beats_broader_exclude(tmp_path: Path):
+    """Only include.odirs override excludes; include.dirs do not."""
     touch(tmp_path / "src" / "foo.c")
     touch(tmp_path / "src" / "KLM" / "skip.c")
     touch(tmp_path / "src" / "KLM" / "ABC" / "keep.c")
@@ -188,7 +188,8 @@ def test_specific_include_dir_beats_broader_exclude(tmp_path: Path):
     touch(tmp_path / "src" / "x" / "KLM" / "ABC" / "keep.c")
 
     cfg = make_config(
-        include_dirs=["**", "**/KLM/ABC/**"],
+        include_dirs=["**"],
+        include_odirs=["**/KLM/ABC/**"],
         include_extensions=["c"],
         exclude_dirs=["**/KLM/**"],
     )
@@ -199,6 +200,17 @@ def test_specific_include_dir_beats_broader_exclude(tmp_path: Path):
     assert str(tmp_path / "src" / "KLM" / "ABC" / "keep.c") in paths
     assert str(tmp_path / "src" / "KLM" / "ABC" / "deep" / "keep.c") in paths
     assert str(tmp_path / "src" / "x" / "KLM" / "ABC" / "keep.c") in paths
+
+
+def test_include_dirs_do_not_override_exclude(tmp_path: Path):
+    touch(tmp_path / "src" / "KLM" / "ABC" / "keep.c")
+    cfg = make_config(
+        include_dirs=["**", "**/KLM/ABC/**"],
+        include_extensions=["c"],
+        exclude_dirs=["**/KLM/**"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "src" / "KLM" / "ABC" / "keep.c") not in paths
 
 
 def test_broad_include_dir_does_not_beat_specific_exclude(tree: Path):
@@ -213,8 +225,8 @@ def test_broad_include_dir_does_not_beat_specific_exclude(tree: Path):
     assert str(tree / "src" / "__pycache__" / "cached.py") not in paths
 
 
-def test_abc_klm_exception_via_include_dirs_only(tmp_path: Path):
-    """Earlier ABC/KLM scenario using only include.dirs + exclude.dirs."""
+def test_abc_klm_exception_via_include_odirs(tmp_path: Path):
+    """ABC/KLM carve-out uses include.odirs, not include.dirs."""
     touch(tmp_path / "src" / "foo.c")
     touch(tmp_path / "src" / "ABC" / "only.c")
     touch(tmp_path / "src" / "ABC" / "other" / "skip.c")
@@ -224,7 +236,8 @@ def test_abc_klm_exception_via_include_dirs_only(tmp_path: Path):
     touch(tmp_path / "src" / "x" / "ABC" / "KLM" / "keep.c")
 
     cfg = make_config(
-        include_dirs=["src/**", "**/ABC/KLM/**"],
+        include_dirs=["src/**"],
+        include_odirs=["**/ABC/KLM/**"],
         include_extensions=["c"],
         exclude_dirs=["**/ABC/**"],
     )

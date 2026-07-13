@@ -21,6 +21,7 @@ def norm_paths(paths: list[str]) -> list[str]:
 def make_config(
     *,
     include_dirs: list[str] | None = None,
+    include_odirs: list[str] | None = None,
     include_files: list[str] | None = None,
     include_extensions: list[str] | None = None,
     exclude_dirs: list[str] | None = None,
@@ -33,6 +34,7 @@ def make_config(
         "filters": {
             "include": {
                 "dirs": include_dirs or [],
+                "odirs": include_odirs or [],
                 "files": include_files or [],
                 "extensions": include_extensions or [],
             },
