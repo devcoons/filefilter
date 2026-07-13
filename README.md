@@ -128,10 +128,10 @@ When scanning files, the library applies filters in this exact sequence:
    - If the file extension matches `exclude.extensions` → **excluded immediately**.  
    - This step is not overridden by include patterns.
 
-2️⃣ **Path excludes vs. override dirs (`include.odirs`)**  
+2️⃣ **Path excludes vs. override patterns (`include.odirs`, `include.ofiles`)**  
    - If the file path matches `exclude.files`, or its parent directory matches `exclude.dirs`, the file is a candidate for exclusion.  
    - **`include.dirs` and `include.files` do not override excludes** — they only gate inclusion later.  
-   - If a matching pattern in `include.odirs` is **more specific** than the best matching exclude pattern → the exclude is **ignored** for this file.  
+   - If a matching pattern in `include.odirs` or `include.ofiles` is **more specific** than the best matching exclude pattern → the exclude is **ignored** for this file.  
    - Otherwise → **excluded**.
 
    | Pattern | Relative specificity |
@@ -139,9 +139,11 @@ When scanning files, the library applies filters in this exact sequence:
    | `**` | very low (broad) |
    | `**/KLM/**` | higher |
    | `**/KLM/ABC/**` | highest |
+   | `**/test_*.py` vs `**/test_keep.py` | ofile wins (more specific) |
 
    > Use `include.dirs` for normal scoping (e.g. `**`, `src/**`).  
-   > Use `include.odirs` only for explicit exceptions to `exclude.dirs` / `exclude.files`.
+   > Use `include.odirs` for directory carve-outs under `exclude.dirs` / `exclude.files`.  
+   > Use `include.ofiles` for file carve-outs under `exclude.files` / `exclude.dirs`.
 
 3️⃣ **Include-file fast path**  
    - If the file matches any `include.files` pattern → **included immediately**,  
@@ -169,6 +171,7 @@ When scanning files, the library applies filters in this exact sequence:
     "include": {
       "dirs": [],
       "odirs": [],
+      "ofiles": [],
       "files": [],
       "extensions": []
     },
@@ -186,6 +189,7 @@ When scanning files, the library applies filters in this exact sequence:
 | `root_dir` | Base directory (absolute or relative). |
 | `filters.include.dirs` | Directory inclusion patterns for gating (must match when any include filters are set). Never overrides excludes. |
 | `filters.include.odirs` | Optional. Override directory patterns (defaults to `[]` when omitted). When more specific than a matching exclude, the exclude is ignored for that path. Also satisfies dir gating. |
+| `filters.include.ofiles` | Optional. Override file patterns (defaults to `[]` when omitted). When more specific than a matching exclude, the exclude is ignored for that path. Also satisfies file gating (does not skip extension whitelist). |
 | `filters.include.files` | File inclusion patterns (glob-like). Forces inclusion (skips extension whitelist) once path excludes are resolved. Does not override excludes. |
 | `filters.include.extensions` | Extension whitelist. |
 | `filters.exclude.*` | Same structure, but acts as exclusion filters. |
@@ -437,11 +441,43 @@ The same technique applies to other “exclude a path part, except one branch”
 
 ---
 
+###  Example 8 — Exclude file patterns, except specific files
+
+Exclude all `test_*.py` files, but keep `test_keep.py`:
+
+```json
+{
+  "root_dir": ".",
+  "filters": {
+    "include": {
+      "dirs": ["**"],
+      "ofiles": ["**/test_keep.py"],
+      "files": [],
+      "extensions": ["py"]
+    },
+    "exclude": {
+      "dirs": [],
+      "files": ["**/test_*.py"],
+      "extensions": []
+    }
+  }
+}
+```
+
+| File Path | Result | Reason |
+|------------|---------|--------|
+| `src/app.py` | ✅ | broad include + `.py` extension |
+| `src/test_foo.py` | ❌ | `**/test_*.py` exclude; no matching `ofiles` |
+| `src/test_keep.py` | ✅ | `**/test_keep.py` ofile beats `**/test_*.py` exclude |
+| `nested/test_keep.py` | ✅ | ofile exception works at any depth |
+
+---
+
 ## Summary of Behavior
 
 - `exclude.extensions` are always applied first (hard exclude).  
 - `include.dirs` and `include.files` **never** override path excludes — they only gate inclusion.  
-- Only `include.odirs` can override a matching exclude, and only when the odir pattern is **more specific**.  
+- Only `include.odirs` and `include.ofiles` can override a matching exclude, and only when the override pattern is **more specific**.  
 - A matching `include.files` pattern forces inclusion (skips extension whitelist), once path excludes are resolved.  
 - If any include filters exist, at least one must match (inclusion gating).  
 - Extensions act as a **final whitelist** when not bypassed by `include.files`.  

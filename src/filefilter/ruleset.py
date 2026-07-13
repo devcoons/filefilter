@@ -58,6 +58,7 @@ class Ruleset:
         self.exc_dirs_root, self.exc_dirs_one, self.exc_dirs_any = parse_dir_patterns(exc.get('dirs', []))
 
         self.include_files = parse_file_patterns(inc.get('files', []))
+        self.include_ofiles = parse_file_patterns(inc.get('ofiles', []))
         self.exclude_files = parse_file_patterns(exc.get('files', []))
 
         self.inc_exts = parse_extensions(inc.get('extensions', []))

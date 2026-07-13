@@ -250,3 +250,65 @@ def test_abc_klm_exception_via_include_odirs(tmp_path: Path):
     assert str(tmp_path / "src" / "ABC" / "KLM" / "nested" / "keep.c") in paths
     assert str(tmp_path / "src" / "x" / "ABC" / "other" / "skip.c") not in paths
     assert str(tmp_path / "src" / "x" / "ABC" / "KLM" / "keep.c") in paths
+
+
+def test_specific_ofile_beats_broader_exclude_file(tmp_path: Path):
+    """Only include.ofiles override excludes; include.files do not."""
+    touch(tmp_path / "src" / "app.py")
+    touch(tmp_path / "src" / "test_foo.py")
+    touch(tmp_path / "src" / "test_keep.py")
+    touch(tmp_path / "src" / "nested" / "test_keep.py")
+
+    cfg = make_config(
+        include_dirs=["**"],
+        include_ofiles=["**/test_keep.py"],
+        include_extensions=["py"],
+        exclude_files=["**/test_*.py"],
+    )
+    paths = select_paths(tmp_path, cfg)
+
+    assert str(tmp_path / "src" / "app.py") in paths
+    assert str(tmp_path / "src" / "test_foo.py") not in paths
+    assert str(tmp_path / "src" / "test_keep.py") in paths
+    assert str(tmp_path / "src" / "nested" / "test_keep.py") in paths
+
+
+def test_include_files_do_not_override_exclude_file(tmp_path: Path):
+    touch(tmp_path / "src" / "test_keep.py")
+    cfg = make_config(
+        include_dirs=["**"],
+        include_files=["**/test_keep.py", "**/test_*.py"],
+        include_extensions=["py"],
+        exclude_files=["**/test_*.py"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "src" / "test_keep.py") not in paths
+
+
+def test_ofile_overrides_exclude_dir_for_single_file(tmp_path: Path):
+    touch(tmp_path / "build" / "app.py")
+    touch(tmp_path / "build" / "keep.py")
+    cfg = make_config(
+        include_dirs=["**"],
+        include_ofiles=["**/build/keep.py"],
+        include_extensions=["py"],
+        exclude_dirs=["**/build/**"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "build" / "app.py") not in paths
+    assert str(tmp_path / "build" / "keep.py") in paths
+
+
+def test_ofile_satisfies_file_gating_without_fast_path(tmp_path: Path):
+    """ofiles satisfy gating but do not skip extension whitelist."""
+    touch(tmp_path / "src" / "keep.txt")
+    touch(tmp_path / "src" / "skip.txt")
+    cfg = make_config(
+        include_files=["**/only.py"],
+        include_ofiles=["**/keep.txt"],
+        include_extensions=["py"],
+        exclude_files=["**/*.txt"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "src" / "keep.txt") not in paths
+    assert str(tmp_path / "src" / "skip.txt") not in paths

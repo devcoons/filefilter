@@ -86,6 +86,35 @@ def test_parse_odirs_buckets_like_dirs():
     assert rules.inc_odirs_one == ["*/pkg"]
 
 
+def test_missing_ofiles_defaults_to_empty(tmp_path: Path):
+    cfg = {
+        "root_dir": ".",
+        "filters": {
+            "include": {"dirs": ["**"], "extensions": ["py"]},
+            "exclude": {"files": ["**/skip.py"]},
+        },
+    }
+    touch(tmp_path / "app.py")
+    touch(tmp_path / "skip.py")
+    rules = load(json.dumps(cfg), base=str(tmp_path))
+    assert rules.include_ofiles == []
+    assert matches(str(tmp_path / "app.py"), rules) is True
+    assert matches(str(tmp_path / "skip.py"), rules) is False
+
+
+def test_parse_ofiles_like_files():
+    cfg = {
+        "root_dir": ".",
+        "filters": {
+            "include": {"files": ["*.py"], "ofiles": ["**/keep.txt", "README.*"]},
+            "exclude": {},
+        },
+    }
+    rules = Ruleset(cfg, resolve_base=".")
+    assert rules.include_files == ["*.py"]
+    assert rules.include_ofiles == ["**/keep.txt", "readme.*"]
+
+
 def test_empty_dir_patterns_are_ignored(tmp_path: Path):
     cfg = {
         "root_dir": ".",
