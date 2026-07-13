@@ -98,6 +98,21 @@ def count_leading_stars(patt: str) -> tuple[int, str]:
 
 #########################################################################################
 
+def segment_matches(token: str, part: str) -> bool:
+    """Match one directory name; * is 1+ chars, ** is 0+ chars within the segment."""
+    token = normalize_path(token)
+    part = normalize_path(part)
+    if len(token) >= 3 and set(token) == {'*'}:
+        return part == token
+    if '*' not in token:
+        return part == token
+    rx = re.escape(token)
+    rx = rx.replace(r'\*\*', '.*')
+    rx = rx.replace(r'\*', '.+')
+    return re.match(r'^' + rx + r'$', part) is not None
+
+#########################################################################################
+
 def match_doublestar_segments(path_parts: list[str], start: int, patt_parts: list[str]) -> list[int]:
     """Return a list of end indices j such that path_parts[start:j] matches patt_parts where '**' means zero+ segments."""
     results = []
@@ -113,7 +128,7 @@ def match_doublestar_segments(path_parts: list[str], start: int, patt_parts: lis
             if j < len(path_parts):
                 rec(i + 1, j + 1)
         else:
-            if j < len(path_parts) and path_parts[j] == token:
+            if j < len(path_parts) and segment_matches(token, path_parts[j]):
                 rec(i + 1, j + 1)
     rec(0, start)
     return results

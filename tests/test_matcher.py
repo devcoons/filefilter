@@ -106,10 +106,65 @@ def test_dir_root_one_any_semantics(tree: Path):
         ("folder/**/another", "folder/another", True),
         ("folder/***/another", "folder/***/another", True),
         ("folder/***/another", "folder/x/another", False),
+        ("**/*hello/**", "abc/myhello/efg", True),
+        ("**/*hello/**", "abc/hello/efg", False),
+        ("**/**hello/**", "abc/hello/efg", True),
+        ("**/**hello/**", "abc/myhello/efg", True),
+        ("**/*hello/**", "abc/xhello/efg", True),
+        ("**/hello*/**", "abc/helloworld/x", True),
+        ("**/hello*/**", "abc/hello/x", False),
+        ("**/*abc/**", "xyz/dataabc/nested", True),
+        ("**/abc*/**", "xyz/abc123/nested", True),
+        ("**/*abc*", "somewhere/myabcfolder", True),
     ],
 )
 def test_match_dir_patterns(pattern: str, dirpath: str, expected: bool):
     assert match_dir(dirpath, [pattern]) is expected
+
+
+def test_exclude_dirs_with_segment_glob(tmp_path: Path):
+    touch(tmp_path / "ok" / "file.c")
+    touch(tmp_path / "ABC" / "Myhello" / "EFG" / "skip.c")
+    touch(tmp_path / "ABC" / "hello" / "EFG" / "skip.c")
+    touch(tmp_path / "ABC" / "xhello" / "keep.c")
+
+    cfg = make_config(
+        include_dirs=["**"],
+        include_extensions=["c"],
+        exclude_dirs=["**/*hello/**"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "ok" / "file.c") in paths
+    assert str(tmp_path / "ABC" / "Myhello" / "EFG" / "skip.c") not in paths
+    assert str(tmp_path / "ABC" / "xhello" / "keep.c") not in paths
+    assert str(tmp_path / "ABC" / "hello" / "EFG" / "skip.c") in paths
+
+
+def test_exclude_dirs_segment_glob_includes_bare_hello_with_doublestar(tmp_path: Path):
+    touch(tmp_path / "ABC" / "hello" / "EFG" / "skip.c")
+    touch(tmp_path / "ABC" / "Myhello" / "EFG" / "skip.c")
+    touch(tmp_path / "ok" / "file.c")
+
+    cfg = make_config(
+        include_dirs=["**"],
+        include_extensions=["c"],
+        exclude_dirs=["**/**hello/**"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "ok" / "file.c") in paths
+    assert str(tmp_path / "ABC" / "hello" / "EFG" / "skip.c") not in paths
+    assert str(tmp_path / "ABC" / "Myhello" / "EFG" / "skip.c") not in paths
+
+def test_match_file_dir_segment_glob(tmp_path: Path):
+    touch(tmp_path / "ABC" / "Myhello" / "target.c")
+    touch(tmp_path / "ABC" / "hello" / "target.c")
+    cfg = make_config(
+        include_files=["**/*hello/**/target.c"],
+        include_extensions=["c"],
+    )
+    paths = select_paths(tmp_path, cfg)
+    assert str(tmp_path / "ABC" / "Myhello" / "target.c") in paths
+    assert str(tmp_path / "ABC" / "hello" / "target.c") not in paths
 
 
 def test_root_only_dir_pattern_does_not_match_nested_descendants(tree: Path):

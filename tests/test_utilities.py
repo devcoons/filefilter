@@ -11,6 +11,7 @@ from filefilter.utilities import (
     parse_dir_patterns,
     parse_extensions,
     pattern_specificity,
+    segment_matches,
     split_path,
 )
 
@@ -56,6 +57,45 @@ def test_match_doublestar_single_segment_wildcard():
     ends = match_doublestar_segments(parts, 0, ["folder", "*", "y"])
     assert 3 in ends
     assert 2 not in ends
+
+
+@pytest.mark.parametrize(
+    "token,part,expected",
+    [
+        ("*hello", "myhello", True),
+        ("*hello", "hello", False),
+        ("*hello", "xhello", True),
+        ("**hello", "hello", True),
+        ("**hello", "myhello", True),
+        ("**hello", "xhello", True),
+        ("hello*", "helloworld", True),
+        ("hello*", "hello", False),
+        ("hello**", "hello", True),
+        ("hello**", "helloworld", True),
+        ("abc*", "abcx", True),
+        ("abc*", "abc", False),
+        ("*abc", "xabc", True),
+        ("*abc", "abc", False),
+        ("*abc*", "xabcy", True),
+        ("*abc*", "abc", False),
+        ("folder", "folder", True),
+        ("folder", "other", False),
+        ("***", "***", True),
+        ("***", "myhello", False),
+    ],
+)
+def test_segment_matches_glob(token: str, part: str, expected: bool):
+    assert segment_matches(token, part) is expected
+
+
+def test_match_doublestar_segments_glob_in_segment():
+    parts = ["abc", "myhello", "efg"]
+    assert match_doublestar_segments(parts, 1, ["*hello"]) == [2]
+    assert match_doublestar_segments(parts, 0, ["abc", "*hello"]) == [2]
+    assert match_doublestar_segments(parts, 0, ["**", "*hello"]) == [2]
+    parts2 = ["abc", "helloworld", "efg"]
+    assert match_doublestar_segments(parts2, 1, ["hello*"]) == [2]
+    assert match_doublestar_segments(parts2, 0, ["abc", "hello*"]) == [2]
 
 
 def test_parse_dir_patterns_buckets():

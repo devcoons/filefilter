@@ -127,7 +127,7 @@ def match_file(filepath: str, include_files: list[str]) -> bool:
             start_positions = range(0, depth + 1)
             for s in start_positions:
                 ends = match_doublestar_segments(dir_parts, s, pat_dirs)
-                if ends:
+                if any(e == depth for e in ends):
                     return True
         elif lead_stars == 0:               
             s = 0

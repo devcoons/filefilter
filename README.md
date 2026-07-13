@@ -196,9 +196,12 @@ When scanning files, the library applies filters in this exact sequence:
 |:-------|:--------|
 | `*` | one or more characters (no slashes) |
 | `**` | zero or more characters (can cross dirs) |
+| `*ABC` / `ABC*` | within a **directory name**, `*` = 1+ chars (e.g. `Myhello` matches `*hello`, not bare `hello`) |
+| `**ABC` / `ABC**` | within a **directory name**, `**` = 0+ chars (e.g. `hello` and `Myhello` both match `**hello`) |
 | Leading `**/` | match anywhere in the tree |
 | Leading `*/` | match exactly N levels below root |
 | Trailing `/**` | match directory and all descendants |
+| `***` (3+ asterisks) | literal directory name, not a wildcard |
 | `.ext` or `ext` | file extension match (case-insensitive) |
 | `.*` in extensions | any non-empty extension |
 
