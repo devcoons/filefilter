@@ -169,10 +169,11 @@ report.included         # paths that would be selected
 report.excluded         # scanned - included
 report.hits             # {"include.dirs:**": 42, ...}
 report.was_hit("exclude.dirs:**/build/**")
+report.has_rule("include.extensions:.py")   # configured (may be 0)
 report.count("include.extensions:.py")
 ```
 
-Hits count **pattern matches per file** during the walk (not only among selected files). A file can increment multiple rules in the same category when several patterns match.
+Hits count **pattern matches per file** during the walk. Path rules (`dirs`, `files`, …) match on every scanned file. `include.extensions` only counts files that **reach the extension whitelist** (not skipped by `include.files` fast path or earlier excludes). `exclude.extensions` matches on any scanned file. Configured extension patterns always appear in `report.hits` (with count `0` when unused). Keys use parsed form, e.g. `include.extensions:.py` for JSON `"py"`.
 
 ---
 

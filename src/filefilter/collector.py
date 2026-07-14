@@ -69,10 +69,22 @@ class DryRunResult:
         """True if this rule matched at least one file."""
         return self.count(rule) > 0
 
+    def has_rule(self, rule: str) -> bool:
+        """True if this rule was configured (appears in hits, possibly with count 0)."""
+        return rule in self.hits
+
     def _record(self, category: str, patterns: list[str], n: int = 1) -> None:
         for patt in patterns:
             key = f"{category}:{patt}"
             self.hits[key] = self.hits.get(key, 0) + n
+
+    def _seed_extensions(self, cfg: Ruleset) -> None:
+        for category, patterns in (
+            ("include.extensions", cfg.inc_exts),
+            ("exclude.extensions", cfg.exc_exts),
+        ):
+            for patt in patterns or []:
+                self.hits.setdefault(f"{category}:{patt}", 0)
 
 #########################################################################################
 
@@ -216,6 +228,30 @@ def should_include(full_path: str, cfg: Ruleset) -> bool:
         return False
     return True
 
+
+def _extension_pass_applies(rel: str, dir_rel: str, name: str, ext: str, cfg: Ruleset) -> bool:
+    """True when should_include would evaluate include.extensions for this path."""
+    if not cfg.inc_exts:
+        return False
+    include_files = cfg.include_files or []
+    ofiles = cfg.include_ofiles or []
+    if cfg.exc_exts and matching_extensions(ext, cfg.exc_exts, name):
+        return False
+    if (cfg.inc_dirs or include_files) and not (
+        _matches(match_file, rel, include_files) or _matches(match_dir, dir_rel, cfg.inc_dirs)
+    ):
+        return False
+    excluded = (
+        _matches(match_file, rel, cfg.exclude_files)
+        or _matches(match_dir, dir_rel, cfg.exc_dirs)
+    )
+    if excluded and not (
+        _matches(match_dir, dir_rel, cfg.inc_odirs)
+        or _matches(match_file, rel, ofiles)
+    ):
+        return False
+    return not _matches(match_file, rel, include_files)
+
 #########################################################################################
 
 def _iter_candidate_files(cfg: Ruleset):
@@ -258,6 +294,7 @@ _RULE_GROUPS = (
 def dry_run(cfg: Ruleset) -> DryRunResult:
     """Walk root_dir without side effects; return selections and per-rule hit counts."""
     result = DryRunResult()
+    result._seed_extensions(cfg)
 
     for full in _iter_candidate_files(cfg):
         result.scanned += 1
@@ -268,8 +305,16 @@ def dry_run(cfg: Ruleset) -> DryRunResult:
             target = dir_rel if kind == "dir" else rel
             matcher = match_dir if kind == "dir" else match_file
             result._record(category, matching_patterns(patterns, matcher, target))
-        result._record("include.extensions", matching_extensions(ext, cfg.inc_exts, name))
-        result._record("exclude.extensions", matching_extensions(ext, cfg.exc_exts, name))
+
+        result._record(
+            "exclude.extensions",
+            matching_extensions(ext, cfg.exc_exts, name),
+        )
+        if _extension_pass_applies(rel, dir_rel, name, ext, cfg):
+            result._record(
+                "include.extensions",
+                matching_extensions(ext, cfg.inc_exts, name),
+            )
 
         if should_include(full, cfg):
             result.included.append(os.path.normpath(full))
