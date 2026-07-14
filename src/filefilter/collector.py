@@ -29,10 +29,51 @@
 #########################################################################################
 
 import os
+from dataclasses import dataclass, field
 from .utilities import *
 from .ruleset import *
 
 #########################################################################################
+#########################################################################################
+
+def _matches(matcher, target: str, patterns: list[str]) -> bool:
+    return bool(patterns and matcher(target, patterns))
+
+
+def _file_context(full_path: str, root_dir: str) -> tuple[str, str, str, str]:
+    rel = normalize_path(os.path.relpath(full_path, root_dir))
+    segments = rel.split('/')
+    name = segments[-1]
+    dir_rel = '/'.join(segments[:-1])
+    _, ext = os.path.splitext(name)
+    return rel, dir_rel, name, ext
+
+#########################################################################################
+
+@dataclass
+class DryRunResult:
+    """Outcome of a dry-run scan: selected files and per-rule hit counts."""
+    scanned: int = 0
+    included: list[str] = field(default_factory=list)
+    hits: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def excluded(self) -> int:
+        return self.scanned - len(self.included)
+
+    def count(self, rule: str) -> int:
+        """How many files matched this rule key (0 if never hit)."""
+        return self.hits.get(rule, 0)
+
+    def was_hit(self, rule: str) -> bool:
+        """True if this rule matched at least one file."""
+        return self.count(rule) > 0
+
+    def _record(self, category: str, patterns: list[str], n: int = 1) -> None:
+        for patt in patterns:
+            key = f"{category}:{patt}"
+            self.hits[key] = self.hits.get(key, 0) + n
+
 #########################################################################################
 
 def match_dir(dirpath: str, include_dirs: list[str]) -> bool:
@@ -146,77 +187,94 @@ def match_file(filepath: str, include_files: list[str]) -> bool:
 #########################################################################################
 
 def should_include(full_path: str, cfg: Ruleset) -> bool:
-    """Decide inclusion using match_file/match_dir with include/exclude/extension rules."""
-    rel = normalize_path(os.path.relpath(full_path, cfg.root_dir))
-    segments = rel.split('/')
-    name = segments[-1]
-    dir_rel = '/'.join(segments[:-1])
-    _, ext = os.path.splitext(name)
-
-    def _merge(*lists):
-        out = []
-        for lst in lists:
-            if lst:
-                out.extend(lst)
-        return out
-
-    if cfg.exc_exts and ext_matches(ext, cfg.exc_exts, name):
-        return False
-
-    inc_dirs = _merge(cfg.inc_dirs_root, cfg.inc_dirs_one, cfg.inc_dirs_any)
-    odirs = _merge(cfg.inc_odirs_root, cfg.inc_odirs_one, cfg.inc_odirs_any)
-    gate_dirs = _merge(inc_dirs, odirs)
-
-    odir_spec = best_matching_specificity(odirs, match_dir, dir_rel)
+    """Decide inclusion: scope (include) -> exclude -> override (odirs/ofiles) -> extensions."""
+    rel, dir_rel, name, ext = _file_context(full_path, cfg.root_dir)
+    include_files = cfg.include_files or []
     ofiles = cfg.include_ofiles or []
-    ofile_spec = best_matching_specificity(ofiles, match_file, rel)
-    override_spec = max(odir_spec, ofile_spec)
 
-    exc_dirs = _merge(cfg.exc_dirs_root, cfg.exc_dirs_one, cfg.exc_dirs_any)
-    exc_path_spec = -1
-    exclude_path_hit = False
-    if cfg.exclude_files and match_file(rel, cfg.exclude_files):
-        exclude_path_hit = True
-        exc_path_spec = max(
-            exc_path_spec,
-            best_matching_specificity(cfg.exclude_files, match_file, rel),
-        )
-    if exc_dirs and match_dir(dir_rel, exc_dirs):
-        exclude_path_hit = True
-        exc_path_spec = max(
-            exc_path_spec,
-            best_matching_specificity(exc_dirs, match_dir, dir_rel),
-        )
-    if exclude_path_hit and override_spec <= exc_path_spec:
+    if cfg.exc_exts and matching_extensions(ext, cfg.exc_exts, name):
         return False
 
-    gate_files = _merge(cfg.include_files, ofiles)
-    if cfg.include_files and match_file(rel, cfg.include_files):
+    if (cfg.inc_dirs or include_files) and not (
+        _matches(match_file, rel, include_files) or _matches(match_dir, dir_rel, cfg.inc_dirs)
+    ):
+        return False
+
+    excluded = (
+        _matches(match_file, rel, cfg.exclude_files)
+        or _matches(match_dir, dir_rel, cfg.exc_dirs)
+    )
+    if excluded and not (
+        _matches(match_dir, dir_rel, cfg.inc_odirs)
+        or _matches(match_file, rel, ofiles)
+    ):
+        return False
+
+    if _matches(match_file, rel, include_files):
         return True
-    files_present = bool(gate_files)
-    files_match = files_present and match_file(rel, gate_files)
-    dirs_present = bool(gate_dirs)
-    dirs_match = dirs_present and match_dir(dir_rel, gate_dirs)
-    if (files_present or dirs_present) and not (files_match or dirs_match):
-        return False
-    if cfg.inc_exts and not ext_matches(ext, cfg.inc_exts, name):
+    if cfg.inc_exts and not matching_extensions(ext, cfg.inc_exts, name):
         return False
     return True
 
 #########################################################################################
 
-def collect_files(cfg: Ruleset) -> list:
-    """Walk root_dir and collect files passing should_include."""
-    matches = []
+def _iter_candidate_files(cfg: Ruleset):
+    """Yield non-symlink files under cfg.root_dir."""
     for root, _, files in os.walk(cfg.root_dir, followlinks=False):
         for fn in files:
             full = os.path.join(root, fn)
-            if os.path.islink(full):
-                continue
-            if should_include(full, cfg):
-                matches.append(os.path.normpath(full))
-    return matches
+            if not os.path.islink(full):
+                yield full
+
+#########################################################################################
+
+def scan(cfg: Ruleset) -> list[str]:
+    """Walk root_dir and return files accepted by the rules."""
+    return [
+        os.path.normpath(full)
+        for full in _iter_candidate_files(cfg)
+        if should_include(full, cfg)
+    ]
+
+#########################################################################################
+
+def matches(path: str, cfg: Ruleset) -> bool:
+    """Return True if `path` would be included by `cfg`."""
+    return should_include(path, cfg)
+
+#########################################################################################
+
+_RULE_GROUPS = (
+    ("include.dirs", "inc_dirs", "dir"),
+    ("include.odirs", "inc_odirs", "dir"),
+    ("include.files", "include_files", "file"),
+    ("include.ofiles", "include_ofiles", "file"),
+    ("exclude.dirs", "exc_dirs", "dir"),
+    ("exclude.files", "exclude_files", "file"),
+)
+
+#########################################################################################
+
+def dry_run(cfg: Ruleset) -> DryRunResult:
+    """Walk root_dir without side effects; return selections and per-rule hit counts."""
+    result = DryRunResult()
+
+    for full in _iter_candidate_files(cfg):
+        result.scanned += 1
+        rel, dir_rel, name, ext = _file_context(full, cfg.root_dir)
+
+        for category, attr, kind in _RULE_GROUPS:
+            patterns = getattr(cfg, attr) or []
+            target = dir_rel if kind == "dir" else rel
+            matcher = match_dir if kind == "dir" else match_file
+            result._record(category, matching_patterns(patterns, matcher, target))
+        result._record("include.extensions", matching_extensions(ext, cfg.inc_exts, name))
+        result._record("exclude.extensions", matching_extensions(ext, cfg.exc_exts, name))
+
+        if should_include(full, cfg):
+            result.included.append(os.path.normpath(full))
+
+    return result
 
 #########################################################################################
 #########################################################################################
-

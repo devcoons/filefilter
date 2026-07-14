@@ -71,6 +71,13 @@ def parse_dir_patterns(patterns):
 
 #########################################################################################
 
+def merge_dir_patterns(patterns) -> list[str]:
+    """Parse and return a single flat list of directory patterns."""
+    root, one, any_ = parse_dir_patterns(patterns)
+    return root + one + any_
+
+#########################################################################################
+
 def parse_extensions(patterns):
     """Normalize and lowercase extensions, ensure leading '.'."""
     out = []
@@ -135,50 +142,27 @@ def match_doublestar_segments(path_parts: list[str], start: int, patt_parts: lis
 
 #########################################################################################
 
-def ext_matches(ext: str, patterns: list[str], filename: str = '') -> bool:
-    """True if ext matches any pattern; '.*' means any non-empty extension only."""
+def matching_patterns(patterns: list[str], matcher, target: str) -> list[str]:
+    """Return all patterns from the list that match target."""
+    return [p for p in (patterns or []) if matcher(target, [p])]
+
+#########################################################################################
+
+def matching_extensions(ext: str, patterns: list[str], filename: str = '') -> list[str]:
+    """Return all extension patterns that match ext/filename."""
     name = normalize_path(filename) if filename else ''
+    out = []
     for p in patterns or []:
         if p == '.*':
             if ext:
-                return True
+                out.append(p)
             continue
         if name and name.endswith(p):
-            return True
-        if fnmatch(ext, p):
-            return True
-    return False
-
-#########################################################################################
-
-def pattern_specificity(pattern: str) -> int:
-    """Score a pattern; higher means more specific (more literals, fewer wildcards)."""
-    p = normalize_path(pattern).rstrip('/')
-    if p.endswith('/**'):
-        p = p[:-3]
-    score = 0
-    for seg in p.split('/'):
-        if not seg:
+            out.append(p)
             continue
-        if seg == '**':
-            score += 1
-        elif seg == '*':
-            score += 5
-        elif '*' in seg:
-            score += 5
-        else:
-            score += 100
-    return score
-
-#########################################################################################
-
-def best_matching_specificity(patterns: list[str], matcher, target: str) -> int:
-    """Return the highest specificity among patterns that match target, or -1 if none."""
-    best = -1
-    for patt in patterns or []:
-        if matcher(target, [patt]):
-            best = max(best, pattern_specificity(patt))
-    return best
+        if fnmatch(ext, p):
+            out.append(p)
+    return out
 
 #########################################################################################
 #########################################################################################

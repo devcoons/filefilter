@@ -3,14 +3,14 @@ from __future__ import annotations
 import pytest
 
 from filefilter.utilities import (
-    best_matching_specificity,
     count_leading_stars,
-    ext_matches,
     match_doublestar_segments,
+    matching_extensions,
+    matching_patterns,
+    merge_dir_patterns,
     normalize_path,
     parse_dir_patterns,
     parse_extensions,
-    pattern_specificity,
     segment_matches,
     split_path,
 )
@@ -107,6 +107,11 @@ def test_parse_dir_patterns_buckets():
     assert any_ == ["**/cache"]
 
 
+def test_merge_dir_patterns_flattens_buckets():
+    merged = merge_dir_patterns(["src", "*/pkg", "**/cache"])
+    assert merged == ["src", "*/pkg", "**/cache"]
+
+
 def test_parse_extensions_strips_and_dots():
     assert parse_extensions(["PY", ".md", "tar.gz", "", ".*"]) == [
         ".py",
@@ -116,27 +121,23 @@ def test_parse_extensions_strips_and_dots():
     ]
 
 
-def test_ext_matches_compound_suffix_by_filename():
-    assert ext_matches(".gz", [".tar.gz"], "archive.tar.gz") is True
-    assert ext_matches(".gz", [".tar.gz"], "archive.gz") is False
+def test_matching_extensions_compound_suffix_by_filename():
+    assert matching_extensions(".gz", [".tar.gz"], "archive.tar.gz") == [".tar.gz"]
+    assert matching_extensions(".gz", [".tar.gz"], "archive.gz") == []
 
 
-def test_ext_matches_dot_star_requires_non_empty_extension():
-    assert ext_matches("", [".*"], "noext") is False
-    assert ext_matches(".py", [".*"], "main.py") is True
+def test_matching_extensions_dot_star_requires_non_empty_extension():
+    assert matching_extensions("", [".*"], "noext") == []
+    assert matching_extensions(".py", [".*"], "main.py") == [".*"]
 
 
-def test_ext_matches_fnmatch_single_component():
-    assert ext_matches(".py", [".py"], "main.py") is True
-    assert ext_matches(".pyc", [".py"], "main.pyc") is False
+def test_matching_extensions_fnmatch_single_component():
+    assert matching_extensions(".py", [".py"], "main.py") == [".py"]
+    assert matching_extensions(".pyc", [".py"], "main.pyc") == []
 
 
-def test_ext_matches_via_fnmatch_when_endswith_does_not():
-    assert ext_matches(".py", [".p?"], "main.py") is True
-
-
-def test_pattern_specificity_skips_empty_segments():
-    assert pattern_specificity("/foo") == pattern_specificity("foo")
+def test_matching_extensions_via_fnmatch_when_endswith_does_not():
+    assert matching_extensions(".py", [".p?"], "main.py") == [".p?"]
 
 
 @pytest.mark.parametrize(
@@ -156,20 +157,15 @@ def test_match_file_edge_cases(filepath: str, patterns: list[str], expected: boo
     assert match_file(filepath, patterns) is expected
 
 
-def test_best_matching_specificity_no_match():
-    from filefilter import match_dir
+def test_matching_patterns_returns_all_hits():
+    from filefilter import match_file
 
-    assert best_matching_specificity(["folder"], match_dir, "other") == -1
+    got = matching_patterns(["*.py", "**/*.py", "readme.md"], match_file, "src/app.py")
+    assert got == ["**/*.py"]
 
 
-@pytest.mark.parametrize(
-    "a,b,expected",
-    [
-        ("**/KLM/ABC/**", "**/KLM/**", True),
-        ("**", "**/KLM/**", False),
-        ("src/**", "src/KLM/**", False),
-        ("**/ABC/KLM/**", "**/ABC/**", True),
-    ],
-)
-def test_pattern_specificity_ordering(a: str, b: str, expected: bool):
-    assert (pattern_specificity(a) > pattern_specificity(b)) is expected
+def test_matching_extensions_returns_all_hits():
+    assert matching_extensions(".py", [".py", ".*"], "app.py") == [".py", ".*"]
+    assert matching_extensions("", [".py", ".*"], "readme") == []
+    assert matching_extensions(".tar.gz", [".tar.gz"], "archive.tar.gz") == [".tar.gz"]
+    assert matching_extensions(".py", [".p*"], "app.py") == [".p*"]

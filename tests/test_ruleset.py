@@ -65,9 +65,7 @@ def test_missing_odirs_defaults_to_empty(tmp_path: Path):
     touch(tmp_path / "src" / "app.py")
     touch(tmp_path / "build" / "app.py")
     rules = load(json.dumps(cfg), base=str(tmp_path))
-    assert rules.inc_odirs_root == []
-    assert rules.inc_odirs_one == []
-    assert rules.inc_odirs_any == []
+    assert rules.inc_odirs == []
     assert matches(str(tmp_path / "src" / "app.py"), rules) is True
     assert matches(str(tmp_path / "build" / "app.py"), rules) is False
 
@@ -81,9 +79,8 @@ def test_parse_odirs_buckets_like_dirs():
         },
     }
     rules = Ruleset(cfg, resolve_base=".")
-    assert rules.inc_dirs_root == ["src"]
-    assert rules.inc_odirs_any == ["**/keep/**"]
-    assert rules.inc_odirs_one == ["*/pkg"]
+    assert rules.inc_dirs == ["src"]
+    assert set(rules.inc_odirs) == {"**/keep/**", "*/pkg"}
 
 
 def test_missing_ofiles_defaults_to_empty(tmp_path: Path):

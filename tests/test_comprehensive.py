@@ -1,6 +1,6 @@
 """
 Exhaustive behavioural tests beyond line coverage — README tables, segment
-globs, specificity, regressions, and end-to-end selection outcomes.
+globs, three-pass pipeline, regressions, and end-to-end selection outcomes.
 """
 
 from __future__ import annotations
@@ -257,10 +257,10 @@ def test_regression_file_matching(path: str, patterns: list[str], expected: bool
 
 
 # ---------------------------------------------------------------------------
-# Specificity / precedence integration
+# Three-pass integration (scope -> exclude -> override)
 # ---------------------------------------------------------------------------
 
-SPECIFICITY_SCENARIOS = [
+THREE_PASS_SCENARIOS = [
     pytest.param(
         ["**"],
         ["**/KLM/ABC/**"],
@@ -310,8 +310,8 @@ SPECIFICITY_SCENARIOS = [
 ]
 
 
-@pytest.mark.parametrize("inc_dirs,inc_odirs,exc_dirs,files", SPECIFICITY_SCENARIOS)
-def test_specificity_integration(
+@pytest.mark.parametrize("inc_dirs,inc_odirs,exc_dirs,files", THREE_PASS_SCENARIOS)
+def test_three_pass_integration(
     tmp_path: Path,
     inc_dirs: list[str],
     inc_odirs: list[str],

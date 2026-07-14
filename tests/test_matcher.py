@@ -5,19 +5,19 @@ from pathlib import Path
 
 import pytest
 
-from filefilter import filter_paths, match_dir, match_file
+from filefilter import match_dir, match_file, select
 
 from conftest import make_config, norm_paths, select_paths, touch, tree  # noqa: F401
 
 
-def test_filter_paths_basic_semantics(tree: Path):
+def test_select_basic_semantics(tree: Path):
     cfg = make_config(
         include_dirs=["**/01/**"],
         include_files=["report_*"],
         include_extensions=[".*"],
         exclude_extensions=[".ext2"],
     )
-    got = norm_paths(filter_paths(json.dumps(cfg), resolve_base=str(tree)))
+    got = norm_paths(select(json.dumps(cfg), base=str(tree)))
     expect = norm_paths(
         [
             str(tree / "report_2025.csv"),

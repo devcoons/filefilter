@@ -31,71 +31,33 @@ __version__ = '0.2.4'
 #########################################################################################
 
 import json
-import warnings
-from .utilities import *
-from .ruleset import *
-from .collector import *
+from .ruleset import Ruleset
+from .collector import (
+    DryRunResult,
+    dry_run,
+    match_dir,
+    match_file,
+    matches,
+    scan,
+)
 
 __all__ = [
-    # Preferred API
-    "Ruleset", "load", "scan", "matches", "select", "match_dir", "match_file",
-    # Legacy API (still supported)
-    "filter_paths"
+    "Ruleset", "load", "scan", "matches", "select", "dry_run",
+    "DryRunResult", "match_dir", "match_file",
 ]
-#########################################################################################
-
-def _warn(old: str, new: str):
-    warnings.warn(
-        f"'filefilter.{old}' is deprecated and will be removed in 0.2.0; "
-        f"use 'filefilter.{new}'",
-        DeprecationWarning,
-        stacklevel=2,
-    )
 
 #########################################################################################
 
 def load(config_json: str, base: str = "cwd") -> Ruleset:
-    """
-    Parse the config JSON and return a RuleSet resolved against `base`.
-    Equivalent to: RuleSet(json.loads(config_json), resolve_base=base)
-    """
+    """Parse config JSON and return a Ruleset resolved against `base`."""
     data = json.loads(config_json)
     return Ruleset(data, resolve_base=base)
 
 #########################################################################################
 
-def scan(rules: Ruleset) -> list[str]:
-    """
-    Walk rules.root_dir and return files accepted by the rules.
-    Equivalent to: collect_files(rules)
-    """
-    return collect_files(rules)
-
-#########################################################################################
-
-def matches(path: str, rules: Ruleset) -> bool:
-    """
-    Return True if `path` would be included by `rules`.
-    Equivalent to: should_include(path, rules)
-    """
-    return should_include(path, rules)
-
-#########################################################################################
-
 def select(config_json: str, base: str = "cwd") -> list[str]:
-    """
-    Convenience: load(...) + scan(...).
-    """
+    """Convenience: load(...) + scan(...)."""
     return scan(load(config_json, base=base))
-
-#########################################################################################
-
-def filter_paths(config_json: str, resolve_base: str = 'cwd'):
-    """Load config JSON, build Config, and return collected files."""
-    _warn("filter_paths", "select")
-    data = json.loads(config_json)
-    cfg = Ruleset(data, resolve_base=resolve_base)
-    return collect_files(cfg)
 
 #########################################################################################
 #########################################################################################

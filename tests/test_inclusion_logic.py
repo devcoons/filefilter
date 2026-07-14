@@ -299,8 +299,8 @@ def test_ofile_overrides_exclude_dir_for_single_file(tmp_path: Path):
     assert str(tmp_path / "build" / "keep.py") in paths
 
 
-def test_ofile_satisfies_file_gating_without_fast_path(tmp_path: Path):
-    """ofiles satisfy gating but do not skip extension whitelist."""
+def test_ofile_does_not_satisfy_pass1_scope(tmp_path: Path):
+    """ofiles only override excludes; pass-1 scope requires include.files."""
     touch(tmp_path / "src" / "keep.txt")
     touch(tmp_path / "src" / "skip.txt")
     cfg = make_config(
