@@ -1,4 +1,4 @@
-"""Verify every file outcome documented in README Examples 1–7."""
+"""Verify every file outcome documented in README Examples 1–8."""
 
 from __future__ import annotations
 
@@ -140,6 +140,27 @@ README_EXAMPLES = [
             "src/KLM/ABC/keep.txt": False,
         },
         id="example-7-klm-abc-exception",
+    ),
+    pytest.param(
+        {
+            "root_dir": ".",
+            "filters": {
+                "include": {
+                    "dirs": ["**"],
+                    "ofiles": ["**/test_keep.py"],
+                    "files": [],
+                    "extensions": ["py"],
+                },
+                "exclude": {"dirs": [], "files": ["**/test_*.py"], "extensions": []},
+            },
+        },
+        {
+            "src/app.py": True,
+            "src/test_foo.py": False,
+            "src/test_keep.py": True,
+            "nested/test_keep.py": True,
+        },
+        id="example-8-ofile-exception",
     ),
 ]
 

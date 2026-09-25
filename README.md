@@ -6,7 +6,7 @@
 ![PyPI - Wheel](https://img.shields.io/pypi/wheel/filefilter?style=for-the-badge&color=%23F0F)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/filefilter?style=for-the-badge)
 
-A small, cross-platform Python library for selecting files from a directory tree using **JSON-defined include/exclude filters**.  
+A small, cross-platform Python library for selecting files from a directory tree using **JSON, YAML, or TOML include/exclude filters**.  
 It focuses on predictable pattern logic rather than the underlying filesystem walk.
 
 ---
@@ -14,6 +14,8 @@ It focuses on predictable pattern logic rather than the underlying filesystem wa
 ##  Features 
 
 - **Pattern-driven filtering** — no manual path checks.
+- **JSON, YAML, or TOML**, passed as text or as a file path.
+- **One filter, or an array of filters.** Each array entry is applied on its own. A file is kept when any entry selects it.
 - **Case-insensitive matching** across all platforms.
 - **Supports rich glob-style patterns**:
   - `*` → one or more characters  
@@ -57,7 +59,7 @@ It focuses on predictable pattern logic rather than the underlying filesystem wa
 |                                   | `**/pkg/*/*`                    | Match **two levels after** any `pkg` at any depth                           | `/pkg/a/b`, `/x/y/pkg/z/t`                                 | Exact depth after target                            |
 |                                   | `/modules/*/test`               | A `test` dir exactly one level under `/modules/<name>`                      | `/modules/auth/test`, `/modules/pay/test`                  | Standard per-module test folder                     |
 |                                   | `/apps/**/dist`                 | Any `dist` inside `/apps`                                                   | `/apps/web/dist`, `/apps/mobile/a/b/dist`                  | Clean build artifacts                               |
-| **Clever use-cases (post-patch)** | `*/*/folder/*/another_folder`   | **Exactly 1** segment between `folder` and `another_folder`                 | `a/b/folder/c/another_folder`                              | Middle `*` now means one segment                    |
+| **Exact middle gaps**            | `*/*/folder/*/another_folder`   | **Exactly 1** segment between `folder` and `another_folder`                 | `a/b/folder/c/another_folder`                              | Middle `*` is one segment                           |
 |                                   | `*/*/folder/**/another_folder`  | **Any number (0+)** of segments between them                                | `a/b/folder/another_folder`, `a/b/folder/x/another_folder` | Use when the gap can vary                           |
 |                                   | `*/*/folder/*/*/another_folder` | **Exactly 2** segments between them                                         | `a/b/folder/x/y/another_folder`                            | Chain `*` for exact middle depth                    |
 |                                   | `**/services/**/migrations/*`   | Immediate children under any `migrations` inside any `services` subtree     | `/x/services/a/migrations/001`, `/services/m/2`            | “Find migration versions but not nested subfolders” |
@@ -102,14 +104,14 @@ It focuses on predictable pattern logic rather than the underlying filesystem wa
 |                                   | `**/*.tar.**`               | `.tar` followed by any (even empty) extension                                            | `/a.tar.gz`, `/b/c.tar.bz2`, `/d/e.tar.`                       | `**` in filename can match empty                                          |
 |                                   | `**/*.*`                    | Files with a dot and **at least one** char extension                                     | `/a.txt`, `/b/c.tar.gz`                                        | “Has extension” filter                                                    |
 |                                   | `**/*.`                     | Filenames ending with a dot                                                              | `/strange.`                                                    | Rare but supported                                                        |
-| **Directory gaps (post-patch)**   | `*/*/folder/*/another.py`   | **Exactly 1** directory between `folder` and `another.py`, and 2 before `folder`         | `/a/b/folder/c/another.py`                                     | Middle `*` = one segment (post-patch)                                     |
+| **Directory gaps**                | `*/*/folder/*/another.py`   | **Exactly 1** directory between `folder` and `another.py`, and 2 before `folder`         | `/a/b/folder/c/another.py`                                     | Middle `*` is one segment                                                |
 |                                   | `*/*/folder/**/another.py`  | **Any number (0+)** directories between `folder` and `another.py`, and 2 before `folder` | `/a/b/folder/another.py`, `/a/b/folder/x/y/another.py`         | Flexible gap                                                              |
 |                                   | `*/*/folder/*/*/another.py` | **Exactly 2** directories between `folder` and `another.py`, and 2 before `folder`       | `/a/b/folder/x/y/another.py`                                   | Chain `*` for exact middle depth                                          |
 | **Exact names at any depth**      | `**/LICENSE**`              | `LICENSE` with optional suffix at any depth                                              | `/LICENSE`, `/pkg/LICENSE-MIT`                                 | Use `**` to allow empty/extra chars                                       |
 |                                   | `**/Dockerfile`             | `Dockerfile` at any depth                                                                | `/Dockerfile`, `/services/api/Dockerfile`                      | Service Dockerfiles                                                       |
 |                                   | `**/Makefile`               | `Makefile` at any depth                                                                  | `/Makefile`, `/lib/x/Makefile`                                 | Build roots                                                               |
 | **Edge / literal cases**          | `**/folder/***/file.txt`    | Requires a **literal** directory named `***` between `folder` and file                   | `/folder/***/file.txt`                                         | `***` is literal, not a wildcard                                          |
-|                                   | `folder/*/file.txt`         | **Exactly 1** dir between `folder` and file (post-patch)                                 | `/folder/a/file.txt`                                           | Before the patch, this would not have matched                             |
+|                                   | `folder/*/file.txt`         | **Exactly 1** directory between `folder` and file                                        | `/folder/a/file.txt`                                           | Middle `*` is one directory                                                |
 |                                   | `folder/**/file.txt`        | Any depth between `folder` and file                                                      | `/folder/file.txt`, `/folder/a/b/file.txt`                     | Versatile                                                                 |
 | **Gotchas**                       | `file*.py` (at root)        | Requires at least one char after `file`                                                  | Matches `/fileA.py`; **does not** match `/file.py`             | Use `file**.py` if `file.py` should match                                 |
 |                                   | `LICENSE*`                  | Requires at least one char after `LICENSE`                                               | Matches `LICENSE-MIT`; **not** `LICENSE`                       | Use `LICENSE**` to include bare `LICENSE`                                 |
@@ -122,7 +124,7 @@ It focuses on predictable pattern logic rather than the underlying filesystem wa
 
 ##  Decision Order (Inclusion / Exclusion Logic)
 
-When scanning files, the library applies filters in this exact sequence:
+When scanning files, the library applies each filter object in this exact sequence. If `filters` is an array, that sequence runs once per entry, and a file is kept when any entry selects it.
 
 1️⃣ **Extension excludes (hard)**  
    - If the file extension matches `exclude.extensions` → **excluded immediately**.  
@@ -161,7 +163,7 @@ When scanning files, the library applies filters in this exact sequence:
 ```python
 from filefilter import dry_run, load
 
-rules = load(cfg_json, base="cwd")
+rules = load(config, base="cwd")
 report = dry_run(rules)
 
 report.scanned          # files walked
@@ -173,11 +175,13 @@ report.has_rule("include.extensions:.py")   # configured (may be 0)
 report.count("include.extensions:.py")
 ```
 
-Hits count **pattern matches per file** during the walk. Path rules (`dirs`, `files`, …) match on every scanned file. `include.extensions` only counts files that **reach the extension whitelist** (not skipped by `include.files` fast path or earlier excludes). `exclude.extensions` matches on any scanned file. Configured extension patterns always appear in `report.hits` (with count `0` when unused). Keys use parsed form, e.g. `include.extensions:.py` for JSON `"py"`.
+Hits count **pattern matches per file** during the walk. Path rules (`dirs`, `files`, …) match on every scanned file. `include.extensions` only counts files that **reach the extension whitelist** (not skipped by `include.files` fast path or earlier excludes). `exclude.extensions` matches on any scanned file. Configured extension patterns always appear in `report.hits` (with count `0` when unused). Keys use parsed form, e.g. `include.extensions:.py` for a configured `py` extension. When `filters` is an array of more than one filter, each filter is counted on its own and the key is prefixed with its index, e.g. `filters[0].include.extensions:.py`. A single object, and a one-element array, keep the unprefixed keys.
 
 ---
 
 ##  Configuration Schema
+
+Each filter object has this shape. `filters` itself is either **one object** or an **array of objects**.
 
 ```json
 {
@@ -208,6 +212,90 @@ Hits count **pattern matches per file** during the walk. Path rules (`dirs`, `fi
 | `filters.include.ofiles` | Optional override file patterns (defaults to `[]`). Undo pass-2 excludes when matched. Do not define scope or skip extension whitelist. |
 | `filters.include.extensions` | Extension whitelist. |
 | `filters.exclude.*` | Same structure, but acts as exclusion filters. |
+
+On an array, the same fields sit on each entry (`filters[0].include.dirs`, and so on).
+
+### Single filter
+
+`filters` is one object. In JSON, YAML, and TOML that is the same structure. A one-element array selects the same files. The two JSON documents below are equivalent:
+
+```json
+{
+  "root_dir": ".",
+  "filters": {
+    "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
+    "exclude": { "dirs": ["__pycache__"], "files": [], "extensions": [] }
+  }
+}
+```
+
+```json
+{
+  "root_dir": ".",
+  "filters": [{
+    "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
+    "exclude": { "dirs": ["__pycache__"], "files": [], "extensions": [] }
+  }]
+}
+```
+
+### Multiple filters
+
+`filters` is an array of objects, in JSON, YAML, or TOML. The array is not merged into one ruleset. Each object is applied on its own with the decision order above, then the selected paths are combined: a file is kept when **any** filter selects it. An exclude in one filter does not remove a file that another filter selected.
+
+```json
+{
+  "root_dir": ".",
+  "filters": [
+    {
+      "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
+      "exclude": { "dirs": ["**/skip/**"], "files": [], "extensions": [] }
+    },
+    {
+      "include": { "dirs": [], "files": ["**/skip/keep.py"], "extensions": [] },
+      "exclude": { "dirs": [], "files": [], "extensions": [] }
+    }
+  ]
+}
+```
+
+| File Path | Result | Reason |
+|------------|---------|--------|
+| `src/app.py` | ✅ | first filter selects `.py` files |
+| `docs/guide.md` | ❌ | neither filter selects it |
+| `skip/other.py` | ❌ | first filter excludes `**/skip/**`; second filter does not name this file |
+| `skip/keep.py` | ✅ | second filter selects it, even though the first filter excludes `skip` |
+
+With more than one filter, dry-run keys are prefixed with the filter index: `filters[0].include.dirs:**`, `filters[1].include.files:**/skip/keep.py`. A single filter keeps the unprefixed keys.
+
+```yaml
+root_dir: "."
+filters:
+  - include:
+      dirs: ["**"]
+      extensions: ["py"]
+    exclude:
+      dirs: ["**/skip/**"]
+  - include:
+      files: ["**/skip/keep.py"]
+    exclude: {}
+```
+
+```toml
+root_dir = "."
+
+[[filters]]
+[filters.include]
+dirs = ["**"]
+extensions = ["py"]
+[filters.exclude]
+dirs = ["**/skip/**"]
+
+[[filters]]
+[filters.include]
+files = ["**/skip/keep.py"]
+[filters.exclude]
+```
 
 ---
 
@@ -387,7 +475,7 @@ Hits count **pattern matches per file** during the walk. Path rules (`dirs`, `fi
 
 ---
 
-###  Example 6 — Combined complex filters
+###  Example 6 — Several rules in one filter
 
 ```json
 {
@@ -497,9 +585,71 @@ Exclude all `test_*.py` files, but keep `test_keep.py`:
 - `include.dirs` and `include.files` **never** override excludes — use `odirs` / `ofiles`.  
 - A matching `include.files` pattern forces inclusion (skips extension whitelist) after passes 1–3.  
 - If any include filters exist, at least one must match (inclusion gating).  
+- When `filters` is an array, that decision order runs **once per entry**. The results are combined: a file is selected if any entry selects it.  
 - Extensions act as a **final whitelist** when not bypassed by `include.files`.  
 - Matching is **case-insensitive** and normalized.  
 - `**` can span directory boundaries, not just characters.
+
+---
+
+##  Configuration formats
+
+`load` and `select` take the same configuration as **JSON, YAML, or TOML**. Pass the document text, or a path to a `.json`, `.yaml`, `.yml`, or `.toml` file.
+
+- A file is parsed by its extension.
+- Document text is recognized automatically. Valid JSON is parsed as JSON.
+- A path is relative to the current working directory. `base` only resolves a relative `root_dir`.
+- In YAML, plain values stay strings, so patterns such as `01`, `on`, `yes`, and `null` are not rewritten.
+- PyYAML is installed with the package. TOML uses the standard library on Python 3.11 and later, and `tomli` on older Python.
+
+A single filter is one object in every format. These three documents select the same files:
+
+```json
+{
+  "root_dir": ".",
+  "filters": {
+    "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
+    "exclude": { "dirs": ["__pycache__"], "files": [], "extensions": [] }
+  }
+}
+```
+
+```yaml
+root_dir: "."
+filters:
+  include:
+    dirs: ["**"]
+    files: []
+    extensions: ["py"]
+  exclude:
+    dirs: ["__pycache__"]
+    files: []
+    extensions: []
+```
+
+```toml
+root_dir = "."
+
+[filters.include]
+dirs = ["**"]
+files = []
+extensions = ["py"]
+
+[filters.exclude]
+dirs = ["__pycache__"]
+files = []
+extensions = []
+```
+
+An array of filters is the same in every format. JSON uses a normal array. YAML uses a list under `filters:`. TOML uses `[[filters]]`. Those documents are in [Multiple filters](#multiple-filters).
+
+```python
+# Text, or a path. The extension selects the parser for a path.
+matched_files = select("filters.json")
+matched_files = select("filters.yaml")
+matched_files = select("filters.toml")
+rules = load("filters.json", base="cwd")
+```
 
 ---
 
@@ -508,7 +658,8 @@ Exclude all `test_*.py` files, but keep `test_keep.py`:
 ```python
 from filefilter import *
 
-cfg_json = """{
+# Single filter: filters is one JSON object.
+cfg_single = """{
     "root_dir": ".",
     "filters": {
         "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
@@ -516,18 +667,43 @@ cfg_json = """{
     }
 }"""
 
-# Option 1: one-liner convenience
-matched_files = select(cfg_json)
+# Same single filter, written as a one-element array.
+cfg_single_list = """{
+    "root_dir": ".",
+    "filters": [{
+        "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
+        "exclude": { "dirs": ["__pycache__"], "files": [], "extensions": [] }
+    }]
+}"""
 
-# Option 2: explicit load + scan
-rules = load(cfg_json, base="cwd")
+# Multiple filters: each object runs on its own, then the matches are combined.
+cfg_multi = """{
+    "root_dir": ".",
+    "filters": [
+        {
+            "include": { "dirs": ["**"], "files": [], "extensions": ["py"] },
+            "exclude": { "dirs": ["**/skip/**"], "files": [], "extensions": [] }
+        },
+        {
+            "include": { "dirs": [], "files": ["**/skip/keep.py"], "extensions": [] },
+            "exclude": { "dirs": [], "files": [], "extensions": [] }
+        }
+    ]
+}"""
+
+# select(cfg_single) and select(cfg_single_list) return the same paths.
+matched_files = select(cfg_single)
+matched_files = select(cfg_multi)
+
+rules = load(cfg_single, base="cwd")
 matched_files = scan(rules)
 
-# Dry-run: same selection plus per-rule hit counts
+# Dry-run: same selection plus per-rule hit counts.
+# A single filter uses keys like include.dirs:**.
+# Multiple filters prefix the index: filters[0].include.dirs:**.
 report = dry_run(rules)
 print(report.scanned, report.excluded, report.count("include.dirs:**"))
 
-# Print any matched file
 for f in matched_files:
     print(f)
 ```

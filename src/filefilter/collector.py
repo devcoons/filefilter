@@ -73,18 +73,18 @@ class DryRunResult:
         """True if this rule was configured (appears in hits, possibly with count 0)."""
         return rule in self.hits
 
-    def _record(self, category: str, patterns: list[str], n: int = 1) -> None:
+    def _record(self, category: str, patterns: list[str], n: int = 1, prefix: str = "") -> None:
         for patt in patterns:
-            key = f"{category}:{patt}"
+            key = f"{prefix}{category}:{patt}"
             self.hits[key] = self.hits.get(key, 0) + n
 
-    def _seed_extensions(self, cfg: Ruleset) -> None:
+    def _seed_extensions(self, flt, prefix: str = "") -> None:
         for category, patterns in (
-            ("include.extensions", cfg.inc_exts),
-            ("exclude.extensions", cfg.exc_exts),
+            ("include.extensions", flt.inc_exts),
+            ("exclude.extensions", flt.exc_exts),
         ):
             for patt in patterns or []:
-                self.hits.setdefault(f"{category}:{patt}", 0)
+                self.hits.setdefault(f"{prefix}{category}:{patt}", 0)
 
 #########################################################################################
 
@@ -198,55 +198,63 @@ def match_file(filepath: str, include_files: list[str]) -> bool:
 
 #########################################################################################
 
-def should_include(full_path: str, cfg: Ruleset) -> bool:
-    """Decide inclusion: scope (include) -> exclude -> override (odirs/ofiles) -> extensions."""
-    rel, dir_rel, name, ext = _file_context(full_path, cfg.root_dir)
-    include_files = cfg.include_files or []
-    ofiles = cfg.include_ofiles or []
+def _filter_includes(rel: str, dir_rel: str, name: str, ext: str, flt) -> bool:
+    """Decide inclusion for one filter: scope -> exclude -> override -> extensions."""
+    include_files = flt.include_files or []
+    ofiles = flt.include_ofiles or []
 
-    if cfg.exc_exts and matching_extensions(ext, cfg.exc_exts, name):
+    if flt.exc_exts and matching_extensions(ext, flt.exc_exts, name):
         return False
 
-    if (cfg.inc_dirs or include_files) and not (
-        _matches(match_file, rel, include_files) or _matches(match_dir, dir_rel, cfg.inc_dirs)
+    if (flt.inc_dirs or include_files) and not (
+        _matches(match_file, rel, include_files) or _matches(match_dir, dir_rel, flt.inc_dirs)
     ):
         return False
 
     excluded = (
-        _matches(match_file, rel, cfg.exclude_files)
-        or _matches(match_dir, dir_rel, cfg.exc_dirs)
+        _matches(match_file, rel, flt.exclude_files)
+        or _matches(match_dir, dir_rel, flt.exc_dirs)
     )
     if excluded and not (
-        _matches(match_dir, dir_rel, cfg.inc_odirs)
+        _matches(match_dir, dir_rel, flt.inc_odirs)
         or _matches(match_file, rel, ofiles)
     ):
         return False
 
     if _matches(match_file, rel, include_files):
         return True
-    if cfg.inc_exts and not matching_extensions(ext, cfg.inc_exts, name):
+    if flt.inc_exts and not matching_extensions(ext, flt.inc_exts, name):
         return False
     return True
 
 
-def _extension_pass_applies(rel: str, dir_rel: str, name: str, ext: str, cfg: Ruleset) -> bool:
-    """True when should_include would evaluate include.extensions for this path."""
-    if not cfg.inc_exts:
+def should_include(full_path: str, cfg: Ruleset) -> bool:
+    """True when any configured filter accepts the file."""
+    rel, dir_rel, name, ext = _file_context(full_path, cfg.root_dir)
+    return any(
+        _filter_includes(rel, dir_rel, name, ext, flt)
+        for flt in cfg.filters
+    )
+
+
+def _extension_pass_applies(rel: str, dir_rel: str, name: str, ext: str, flt) -> bool:
+    """True when this filter would evaluate include.extensions for this path."""
+    if not flt.inc_exts:
         return False
-    include_files = cfg.include_files or []
-    ofiles = cfg.include_ofiles or []
-    if cfg.exc_exts and matching_extensions(ext, cfg.exc_exts, name):
+    include_files = flt.include_files or []
+    ofiles = flt.include_ofiles or []
+    if flt.exc_exts and matching_extensions(ext, flt.exc_exts, name):
         return False
-    if (cfg.inc_dirs or include_files) and not (
-        _matches(match_file, rel, include_files) or _matches(match_dir, dir_rel, cfg.inc_dirs)
+    if (flt.inc_dirs or include_files) and not (
+        _matches(match_file, rel, include_files) or _matches(match_dir, dir_rel, flt.inc_dirs)
     ):
         return False
     excluded = (
-        _matches(match_file, rel, cfg.exclude_files)
-        or _matches(match_dir, dir_rel, cfg.exc_dirs)
+        _matches(match_file, rel, flt.exclude_files)
+        or _matches(match_dir, dir_rel, flt.exc_dirs)
     )
     if excluded and not (
-        _matches(match_dir, dir_rel, cfg.inc_odirs)
+        _matches(match_dir, dir_rel, flt.inc_odirs)
         or _matches(match_file, rel, ofiles)
     ):
         return False
@@ -265,7 +273,7 @@ def _iter_candidate_files(cfg: Ruleset):
 #########################################################################################
 
 def scan(cfg: Ruleset) -> list[str]:
-    """Walk root_dir and return files accepted by the rules."""
+    """Walk root_dir and return files accepted by any filter."""
     return [
         os.path.normpath(full)
         for full in _iter_candidate_files(cfg)
@@ -275,7 +283,7 @@ def scan(cfg: Ruleset) -> list[str]:
 #########################################################################################
 
 def matches(path: str, cfg: Ruleset) -> bool:
-    """Return True if `path` would be included by `cfg`."""
+    """Return True if any filter in `cfg` would include `path`."""
     return should_include(path, cfg)
 
 #########################################################################################
@@ -291,32 +299,51 @@ _RULE_GROUPS = (
 
 #########################################################################################
 
+def _filter_prefix(cfg: Ruleset, index: int) -> str:
+    """Keep single-filter hit keys unchanged; index keys when several filters are set."""
+    if len(cfg.filters) == 1:
+        return ""
+    return f"filters[{index}]."
+
+
 def dry_run(cfg: Ruleset) -> DryRunResult:
     """Walk root_dir without side effects; return selections and per-rule hit counts."""
     result = DryRunResult()
-    result._seed_extensions(cfg)
+    for index, flt in enumerate(cfg.filters):
+        result._seed_extensions(flt, _filter_prefix(cfg, index))
 
     for full in _iter_candidate_files(cfg):
         result.scanned += 1
         rel, dir_rel, name, ext = _file_context(full, cfg.root_dir)
+        included = False
 
-        for category, attr, kind in _RULE_GROUPS:
-            patterns = getattr(cfg, attr) or []
-            target = dir_rel if kind == "dir" else rel
-            matcher = match_dir if kind == "dir" else match_file
-            result._record(category, matching_patterns(patterns, matcher, target))
+        for index, flt in enumerate(cfg.filters):
+            prefix = _filter_prefix(cfg, index)
+            for category, attr, kind in _RULE_GROUPS:
+                patterns = getattr(flt, attr) or []
+                target = dir_rel if kind == "dir" else rel
+                matcher = match_dir if kind == "dir" else match_file
+                result._record(
+                    category,
+                    matching_patterns(patterns, matcher, target),
+                    prefix=prefix,
+                )
 
-        result._record(
-            "exclude.extensions",
-            matching_extensions(ext, cfg.exc_exts, name),
-        )
-        if _extension_pass_applies(rel, dir_rel, name, ext, cfg):
             result._record(
-                "include.extensions",
-                matching_extensions(ext, cfg.inc_exts, name),
+                "exclude.extensions",
+                matching_extensions(ext, flt.exc_exts, name),
+                prefix=prefix,
             )
+            if _extension_pass_applies(rel, dir_rel, name, ext, flt):
+                result._record(
+                    "include.extensions",
+                    matching_extensions(ext, flt.inc_exts, name),
+                    prefix=prefix,
+                )
+            if _filter_includes(rel, dir_rel, name, ext, flt):
+                included = True
 
-        if should_include(full, cfg):
+        if included:
             result.included.append(os.path.normpath(full))
 
     return result

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "filefilter"
 version = "0.2.6"
-description = "Filter files in a directory tree based on configurable glob rules."
+description = "Filter files in a directory tree based on configurable glob rules (JSON, YAML, or TOML)."
 readme = "README.md"
 authors = [{ name = "Ioannis D (devcoons)", email = "support@devcoons.com" }]
 
@@ -31,7 +31,10 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy"
 ]
 keywords = ["filefilter"]
-dependencies = []
+dependencies = [
+  "PyYAML>=5.4",
+  "tomli>=1.2.2; python_version < '3.11'",
+]
 requires-python = ">=3.7"
 
 [project.optional-dependencies]

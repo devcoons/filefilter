@@ -30,8 +30,8 @@ __version__ = '0.2.6'
 # IMPORTS                                                                               #
 #########################################################################################
 
-import json
-from .ruleset import Ruleset
+from .config import parse_config
+from .ruleset import Filter, Ruleset
 from .collector import (
     DryRunResult,
     dry_run,
@@ -42,22 +42,41 @@ from .collector import (
 )
 
 __all__ = [
-    "Ruleset", "load", "scan", "matches", "select", "dry_run",
+    "Filter", "Ruleset", "load", "scan", "matches", "select", "dry_run",
     "DryRunResult", "match_dir", "match_file",
 ]
 
 #########################################################################################
 
-def load(config_json: str, base: str = "cwd") -> Ruleset:
-    """Parse config JSON and return a Ruleset resolved against `base`."""
-    data = json.loads(config_json)
-    return Ruleset(data, resolve_base=base)
+def _one_config(config, config_json, caller):
+    if config is not None and config_json is not None:
+        raise TypeError(f"{caller}() got both 'config' and 'config_json'")
+    if config is None:
+        config = config_json
+    if config is None:
+        raise TypeError(f"{caller}() missing required argument: 'config'")
+    return config
 
 #########################################################################################
 
-def select(config_json: str, base: str = "cwd") -> list[str]:
-    """Convenience: load(...) + scan(...)."""
-    return scan(load(config_json, base=base))
+def load(config=None, base: str = "cwd", *, config_json=None) -> Ruleset:
+    """Parse JSON, YAML, or TOML configuration and return a Ruleset.
+
+    `config` is the document text, or a path to a `.json`, `.yaml`, `.yml`,
+    or `.toml` file. Format is taken from the file extension, otherwise
+    detected from the text. Existing JSON strings keep their previous meaning.
+
+    `base` resolves a relative `root_dir` (`"cwd"`, `"script"`, or a directory).
+    `config_json` is a keyword alias of `config`.
+    """
+    source = _one_config(config, config_json, "load")
+    return Ruleset(parse_config(source), resolve_base=base)
+
+#########################################################################################
+
+def select(config=None, base: str = "cwd", *, config_json=None) -> list[str]:
+    """Convenience: load(...) + scan(...). Accepts the same config as `load`."""
+    return scan(load(_one_config(config, config_json, "select"), base=base))
 
 #########################################################################################
 #########################################################################################
